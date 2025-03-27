@@ -52,8 +52,8 @@ jobs:
         python -m dev vendor-robocorp-ls-core
         python -m dev vendor-robotframework-interactive
         python -m dev vendor-robotframework-output-stream
-    - name: Fix README references
-      run: python -m dev fix-readme
+    # - name: Fix README references
+    #   run: python -m dev fix-readme
     - name: Build wheel
       working-directory: ./robotframework-ls/src
       run: |
@@ -78,7 +78,7 @@ jobs:
     #     path: robotframework-intellij/build/distributions/
 
     # Note: always publish a pre-release to VSCode marketplace.
-    - name: Publish pre-release to vscode marketplace
-      run: vsce publish -p $VSCE_TOKEN --pre-release
-      env:
-        VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+    # - name: Publish pre-release to vscode marketplace
+    #   run: vsce publish -p $VSCE_TOKEN --pre-release
+    #   env:
+    #     VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
