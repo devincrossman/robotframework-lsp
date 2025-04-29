@@ -24,8 +24,6 @@ jobs:
           python -m venv .venv
           source ./.venv/bin/activate
           
-          cd ..
-          
           echo $PWD/robotframework-ls/src > .venv/lib/python3.10/site-packages/rf_src.pth
           echo $PWD/robocorp-python-ls-core/src >> .venv/lib/python3.10/site-packages/rf_src.pth
           echo $PWD/robotframework-ls/tests >> .venv/lib/python3.10/site-packages/rf_src.pth
