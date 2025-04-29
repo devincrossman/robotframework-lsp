@@ -1331,9 +1331,9 @@ class RobotFrameworkLanguageServer(PythonLanguageServer):
                         f"Exception calling: {self._lsp_messages.M_APPLY_EDIT}"
                     )
 
-            apply_snippet: Optional[
-                WorkspaceEditParamsTypedDict
-            ] = code_action_info.get("apply_snippet")
+            apply_snippet: Optional[WorkspaceEditParamsTypedDict] = (
+                code_action_info.get("apply_snippet")
+            )
             if apply_snippet:
                 fut: IFuture = self._lsp_messages.apply_snippet(apply_snippet)
                 try:
@@ -1351,9 +1351,9 @@ class RobotFrameworkLanguageServer(PythonLanguageServer):
                     self._execute_on_main_thread(partial(self.lint, uri, is_saved=True))
 
             # Force showing some document?
-            show_document_args: Optional[
-                ShowDocumentParamsTypedDict
-            ] = code_action_info.get("show_document")
+            show_document_args: Optional[ShowDocumentParamsTypedDict] = (
+                code_action_info.get("show_document")
+            )
             log.info("Show document: %s", show_document_args)
             self._lsp_messages.show_document(show_document_args)
 

@@ -311,7 +311,7 @@ def test_keyword_completions_builtin_duplicated(workspace, cases, libspec_manage
         if completion["label"].lower() == "should be equal (builtin)"
     ]
 
-    assert len(found) == 1, f'Found: {[x["label"] for x in completions]}'
+    assert len(found) == 1, f"Found: {[x['label'] for x in completions]}"
 
 
 def test_keyword_completions_fixture(workspace, libspec_manager):
@@ -334,7 +334,7 @@ def test_keyword_completions_fixture(workspace, libspec_manager):
         if completion["label"].lower() == "my equal redefined (case2)"
     ]
 
-    assert len(found) == 1, f'Found: {[x["label"] for x in completions]}'
+    assert len(found) == 1, f"Found: {[x['label'] for x in completions]}"
 
 
 def test_keyword_completions_settings_fixture(workspace, libspec_manager):
@@ -357,7 +357,7 @@ def test_keyword_completions_settings_fixture(workspace, libspec_manager):
         if completion["label"].lower() == "my equal redefined (case2)"
     ]
 
-    assert len(found) == 1, f'Found: {[x["label"] for x in completions]}'
+    assert len(found) == 1, f"Found: {[x['label'] for x in completions]}"
 
 
 def test_keyword_completions_bdd_prefix(workspace, libspec_manager, data_regression):
@@ -379,7 +379,7 @@ def test_keyword_completions_bdd_prefix(workspace, libspec_manager, data_regress
         for completion in completions
         if completion["label"].lower() == "my equal redefined (case2)"
     ]
-    assert len(found) == 1, f'Found: {[x["label"] for x in completions]}'
+    assert len(found) == 1, f"Found: {[x['label'] for x in completions]}"
     data_regression.check(found)
 
 
@@ -408,7 +408,7 @@ Test Template    my eq"""
         if completion["label"].lower() == "my equal redefined (case2)"
     ]
 
-    assert len(found) == 1, f'Found: {[x["label"] for x in completions]}'
+    assert len(found) == 1, f"Found: {[x['label'] for x in completions]}"
 
 
 def test_keyword_completions_deprecated_library_keyword(workspace, libspec_manager):
@@ -436,7 +436,7 @@ Test
         if completion["label"].lower() == "my equal redefined (case2)"
     ]
 
-    assert len(found) == 1, f'Found: {[x["label"] for x in completions]}'
+    assert len(found) == 1, f"Found: {[x['label'] for x in completions]}"
     completion = next(iter(found))
     assert completion["tags"] == [CompletionItemTag.Deprecated]
 
@@ -479,7 +479,7 @@ Test
         if completion["label"].lower() == "lib keyword (my_lib)"
     ]
 
-    assert len(found) == 1, f'Found: {[x["label"] for x in completions]}'
+    assert len(found) == 1, f"Found: {[x['label'] for x in completions]}"
     completion = next(iter(found))
     assert completion["tags"] == [CompletionItemTag.Deprecated]
 
@@ -526,7 +526,7 @@ Test
         if completion["label"].lower() == "lib keyword (my_lib)"
     ]
 
-    assert len(found) == 1, f'Found: {[x["label"] for x in completions]}'
+    assert len(found) == 1, f"Found: {[x['label'] for x in completions]}"
     completion = next(iter(found))
     assert completion["tags"] == [CompletionItemTag.Deprecated]
 
@@ -543,7 +543,7 @@ Test
         if completion["label"].lower() == "lib keyword (my_lib)"
     ]
 
-    assert len(found) == 1, f'Found: {[x["label"] for x in completions]}'
+    assert len(found) == 1, f"Found: {[x['label'] for x in completions]}"
     completion = next(iter(found))
     assert not completion.get("tags")
 

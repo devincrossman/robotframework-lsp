@@ -1,6 +1,7 @@
 """
 Constants that help in describing the accepted structure of a file.
 """
+
 import os
 from functools import lru_cache
 

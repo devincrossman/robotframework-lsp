@@ -9,6 +9,7 @@ Some example commands:
     python -m dev check-tag-version
     python -m dev vendor-robocorp-ls-core
 """
+
 import sys
 import os
 import traceback

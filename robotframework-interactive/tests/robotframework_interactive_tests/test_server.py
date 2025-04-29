@@ -139,9 +139,9 @@ Some task
     assert result["success"], f"Found: {result}"
 
     result = rf_interpreter_server_manager.interpreter_start(setup.uri)
-    assert not result[
-        "success"
-    ], f"Found: {result}"  # i.e.: already initialized (cannot reinitialize)
+    assert not result["success"], (
+        f"Found: {result}"
+    )  # i.e.: already initialized (cannot reinitialize)
 
 
 def test_server_stdin(setup: _Setup):

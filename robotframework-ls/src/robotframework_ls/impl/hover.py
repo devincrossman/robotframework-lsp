@@ -42,9 +42,9 @@ def hover(completion_context: ICompletionContext) -> Optional[HoverTypedDict]:
 
     active_parameter = sig_help.activeParameter
 
-    optional_documentation_markup: Optional[
-        MarkupContentTypedDict
-    ] = active_signature.documentation
+    optional_documentation_markup: Optional[MarkupContentTypedDict] = (
+        active_signature.documentation
+    )
     documentation_markup: MarkupContentTypedDict
     if not optional_documentation_markup:
         documentation_markup = {"kind": MarkupKind.Markdown, "value": ""}

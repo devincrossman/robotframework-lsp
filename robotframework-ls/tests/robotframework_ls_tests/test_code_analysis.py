@@ -39,7 +39,7 @@ def test_keywords_analyzed(workspace, libspec_manager, data_regression):
     doc = workspace.put_doc(
         "case2.robot",
         doc.source
-        + ("\n    This keyword does not exist" "\n    [Teardown]    Also not there"),
+        + ("\n    This keyword does not exist\n    [Teardown]    Also not there"),
     )
 
     _collect_errors(workspace, doc, data_regression)

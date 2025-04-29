@@ -24,6 +24,7 @@ See:
 * https://guides.github.com/pdfs/markdown-cheatsheet-online.pdf
 * https://github.com/matthew-brett/nb2plots/blob/master/nb2plots/doctree2md.py
 """
+
 from __future__ import unicode_literals
 
 import re

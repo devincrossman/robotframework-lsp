@@ -163,9 +163,7 @@ class _EmbeddedArgumentParser:
     def _regexp_extensions_are_not_allowed(cls, pattern):
         if not cls._regexp_extension.search(pattern):
             return pattern
-        raise RuntimeError(
-            "Regexp extensions are not allowed in embedded " "arguments."
-        )
+        raise RuntimeError("Regexp extensions are not allowed in embedded arguments.")
 
     @classmethod
     def _make_groups_non_capturing(cls, pattern):
@@ -233,14 +231,14 @@ def build_keyword_docs_with_signature(
 
         if args:
             escaped_args = (x.replace("*", "\\*") for x in args)
-            arg_docs = f'({", ".join(escaped_args)})'
+            arg_docs = f"({', '.join(escaped_args)})"
 
         else:
             arg_docs = ""
         return f"**{keyword_name}{arg_docs}**\n\n{docs}"
     else:
         if args:
-            arg_docs = f'({", ".join(args)})'
+            arg_docs = f"({', '.join(args)})"
 
         else:
             arg_docs = ""

@@ -307,9 +307,9 @@ class WorkspaceIndexer(object):
             self.symbols_cache_reverse_index.notify_uri_changed(uri)
 
     def wait_for_full_test_collection(self):
-        assert (
-            self._collect_tests
-        ), "Cannot wait for first test collection if not collecting tests."
+        assert self._collect_tests, (
+            "Cannot wait for first test collection if not collecting tests."
+        )
 
         self._clear_caches.set()
         reindex_info = self._reindex_manager.request_full_collection()
@@ -562,9 +562,9 @@ class RobotWorkspace(Workspace):
         self._lock_setup_workspace_indexer = threading.Lock()
         if collect_tests:
             assert endpoint is not None
-            assert (
-                index_workspace
-            ), "Can only collect tests when the workspace indexing is setup too."
+            assert index_workspace, (
+                "Can only collect tests when the workspace indexing is setup too."
+            )
 
         if index_workspace:
             self.workspace_indexer = WorkspaceIndexer(

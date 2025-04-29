@@ -19,23 +19,14 @@ jobs:
 
       - name: Install pip deps
         run: |
-          python -m pip install --upgrade pip fire poetry
+          python -m pip install --upgrade pip fire robotframework-output-stream ruff mypy types-mock pytest docutils types-docutils
           
           python -m venv .venv
           source ./.venv/bin/activate
           
-          cd robocorp-code
-          
-          poetry install
-          poetry run python -m pip install robotframework-output-stream
-          
-          cd ..
-          
           echo $PWD/robotframework-ls/src > .venv/lib/python3.10/site-packages/rf_src.pth
-          echo $PWD/robocorp-code/src >> .venv/lib/python3.10/site-packages/rf_src.pth
           echo $PWD/robocorp-python-ls-core/src >> .venv/lib/python3.10/site-packages/rf_src.pth
           echo $PWD/robotframework-ls/tests >> .venv/lib/python3.10/site-packages/rf_src.pth
-          echo $PWD/robocorp-code/tests >> .venv/lib/python3.10/site-packages/rf_src.pth
           echo $PWD/robocorp-python-ls-core/tests >> .venv/lib/python3.10/site-packages/rf_src.pth
 
           
@@ -47,20 +38,9 @@ jobs:
         working-directory: ./robotframework-ls/
         run: prettier --check vscode-client/**/*.ts
         
-      - name: Prettier Robocorp Code (yarn prettier --write vscode-client/**/*.ts to format files locally)
-        working-directory: ./robocorp-code
-        run: prettier --check vscode-client/**/*.ts
-        
       - name: Prettier RF Interactive (yarn prettier --write src/**/*.{ts,tsx} to format files locally)
         working-directory: ./robotframework-interactive/vscode-interpreter-webview
         run: prettier --check src/**/*.{ts,tsx}
-        
-      - name: ruff format check robocorp-code
-        run: |
-          echo $PWD
-          ls -la
-          source ./.venv/bin/activate
-          ruff format --check ./robocorp-code --exclude=vendored --exclude=_vendored
           
       - name: ruff format check robotframework-ls
         run: |
@@ -77,11 +57,6 @@ jobs:
           source ./.venv/bin/activate
           ruff format --check ./robocorp-python-ls-core --exclude=vendored --exclude=libs
           
-      - name: mypy robocorp-code
-        run: |
-          source ./.venv/bin/activate
-          mypy --follow-imports=silent --show-column-numbers $PWD/robocorp-code/src $PWD/robocorp-code/tests  $PWD/robocorp-code/codegen
-
       - name: mypy robocorp-python-ls-core
         run: |
           source ./.venv/bin/activate

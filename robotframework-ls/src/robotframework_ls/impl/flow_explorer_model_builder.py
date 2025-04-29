@@ -249,13 +249,13 @@ def __build_hierarchy(
                         definition = next(iter(definitions))
                         keyword_found: IKeywordFound = definition.keyword_found
                         if keyword_found.library_name:
-                            keyword[
-                                "name"
-                            ] = f"{keyword_usage_node.keyword} ({keyword_found.library_name.lower()})"
+                            keyword["name"] = (
+                                f"{keyword_usage_node.keyword} ({keyword_found.library_name.lower()})"
+                            )
                         elif keyword_found.resource_name:
-                            keyword[
-                                "name"
-                            ] = f"{keyword_usage_node.keyword} ({keyword_found.resource_name.lower()})"
+                            keyword["name"] = (
+                                f"{keyword_usage_node.keyword} ({keyword_found.resource_name.lower()})"
+                            )
                         keyword["internal_name"] = get_internal_name(keyword["name"])
 
                         # If it was found in a library we don't recurse anymore.

@@ -175,17 +175,7 @@ def test_nested_uls():
     """
     txt = md(nested_uls)
     assert repr(txt) == repr(
-        "* 1\n"
-        "\t+ a\n"
-        "\t\t- I\n"
-        "\t\t- II\n"
-        "\t\t- III\n"
-        "\t\t\n"
-        "\t+ b\n"
-        "\t+ c\n"
-        "\t\n"
-        "* 2\n"
-        "* 3\n"
+        "* 1\n\t+ a\n\t\t- I\n\t\t- II\n\t\t- III\n\t\t\n\t+ b\n\t+ c\n\t\n* 2\n* 3\n"
     )
 
 

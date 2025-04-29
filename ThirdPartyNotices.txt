@@ -1,12 +1,12 @@
 THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
-For robotframework-lsp
+For robotframework-lsp (forked and modified by Devin Crossman)
 
 This project incorporates material from the project(s) listed below (collectively, “Third Party Code”). 
-Robocorp Technologies Inc. is not the original author of the Third Party Code. 
-The original copyright notice and license under which Robocorp Technologies Inc. received such Third Party Code are set out below. 
+Devin Crossman is not the original author of the Third Party Code unless otherwise indicated. 
+The original copyright notices and licenses under which 
+this project received such Third Party Code are set out below. 
 This Third Party Code is licensed to you under their original license terms set forth below. 
-Robocorp Technologies Inc. reserves all other rights not expressly granted, whether by implication, estoppel or otherwise.
-
+All other rights are reserved unless expressly granted by those licenses.
 
 1) python-language-server (MIT)
 (https://github.com/palantir/python-language-server)
@@ -519,3 +519,20 @@ From: https://github.com/d-biehl/robotcode
 26) All third party javascript packages in node_modules folders are licensed under the licenses specified in those packages.
    
 27) All third party python packages in robocorp-python-ls-core/src/robocorp_ls_core/libs folders are licensed under the licenses specified in those packages.
+
+28) robotframework-lsp (Apache License 2.0)
+(https://github.com/robocorp/robotframework-lsp)
+
+Originally developed by Robocorp Technologies Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

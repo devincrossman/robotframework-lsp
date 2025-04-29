@@ -2,6 +2,7 @@
 This is an integration test. It will check that the language server works with
 RobotFramework itself.
 """
+
 from pathlib import Path
 import pytest
 from robocorp_ls_core.constants import NULL

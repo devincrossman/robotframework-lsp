@@ -2224,9 +2224,9 @@ def set_localization_info_in_model(ast, localization_info: LocalizationInfo):
     """
     Sets information regarding localization of the AST in the model (File).
     """
-    assert (
-        ast.__class__.__name__ == "File"
-    ), f"Expected File. Found: {ast.__class__.__name__}"
+    assert ast.__class__.__name__ == "File", (
+        f"Expected File. Found: {ast.__class__.__name__}"
+    )
 
     ast.__localization_info__ = localization_info
 

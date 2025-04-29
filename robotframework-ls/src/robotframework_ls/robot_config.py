@@ -88,9 +88,9 @@ def get_robot_libraries_deprecated_name_to_replacement(
                     continue
                 replacement = str(entry.get("replacement", ""))
                 if replacement:
-                    deprecated_library_name_to_replacement[
-                        name
-                    ] = f"*DEPRECATED* Please use {replacement} instead. "
+                    deprecated_library_name_to_replacement[name] = (
+                        f"*DEPRECATED* Please use {replacement} instead. "
+                    )
                 else:
                     deprecated_library_name_to_replacement[name] = f"*DEPRECATED* "
             else:

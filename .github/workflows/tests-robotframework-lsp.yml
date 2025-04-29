@@ -24,9 +24,6 @@ jobs:
           "windows-py311-pip-v3",
           "ubuntu-py310-pip-v5",  # RF5 Must be with 3.10 due to a test using the `|` union operator.
           "ubuntu-py38-pip-v6",
-          "ubuntu-py39-master",
-#           "ubuntu-pypy3-master",
-          "macos-py311",
         ]
         
         include:
@@ -39,20 +36,6 @@ jobs:
           - name: "ubuntu-py38-pip-v6"
             python: "3.8"
             os: ubuntu-latest
-          - name: "ubuntu-py39-master"
-            python: "3.9"
-            os: ubuntu-latest
-#           - name: "ubuntu-pypy3-master"
-#             python: "pypy3"
-#             os: ubuntu-latest
-# Github actions seems to be having issues with Mac (regardless of which is the last action it may not complete)
-# so, leave it commented out for now.
-# See:
-# https://github.community/t5/GitHub-Actions/Jobs-on-Mac-OS-failing-on-Complete-Job/m-p/52401
-# https://github.community/t5/GitHub-Actions/Jobs-on-macOS-latest-sometimes-gets-cancelled-An-error-occurred/td-p/44124
-          - name: "macos-py311"
-            python: "3.11"
-            os: macos-latest
 
     steps:
     - name: Checkout repository and submodules
