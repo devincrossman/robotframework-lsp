@@ -1001,7 +1001,7 @@ class RobotFrameworkServerApi(PythonLanguageServer):
             completion_context.doc, code_lens(completion_context)
         )
 
-    def m_resolve_code_lens(self, **code_lens: CodeLensTypedDict):
+    def m_resolve_code_lens(self, code_lens: CodeLensTypedDict):
         func = partial(self._threaded_resolve_code_lens, code_lens)
         func = require_monitor(func)
         return func
