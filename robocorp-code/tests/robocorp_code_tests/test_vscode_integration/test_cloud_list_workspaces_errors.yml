@@ -1,6 +1,0 @@
-message: null
-result:
-- packages: []
-  workspaceId: workspace_id_2
-  workspaceName: My Other workspace
-success: true
