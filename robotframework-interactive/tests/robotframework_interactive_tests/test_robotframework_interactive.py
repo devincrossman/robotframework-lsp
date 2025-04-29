@@ -293,7 +293,7 @@ def test_new_lines_and_output_2(interpreter: _InterpreterInfo):
     assert "Output:" not in interpreter.stream_stdout.getvalue()
 
     interpreter.interpreter.evaluate(
-        "${a}=    Set Variable    somevariabletolog\r" "Log to console    ${a}"
+        "${a}=    Set Variable    somevariabletolog\rLog to console    ${a}"
     )
     assert interpreter.stream_stdout.getvalue().count("somevariabletolog") == 1
 
@@ -332,11 +332,7 @@ def test_full_doc_multiple(interpreter: _InterpreterInfo):
             "    Log    Else    console=True"
         ),
         "Log    Foo    console=True",
-        (
-            "*** Task ***\n"
-            "Any task name ignored here\n"
-            "    Log    Else    console=True"
-        ),
+        ("*** Task ***\nAny task name ignored here\n    Log    Else    console=True"),
     ]
 
     for c in contents:
@@ -359,9 +355,9 @@ def test_full_doc_multiple(interpreter: _InterpreterInfo):
 def test_redefine_keyword(interpreter: _InterpreterInfo):
     evaluate = interpreter.interpreter.evaluate
     contents = [
-        ("*** Keyword ***\n" "My Keyword\n" "    Log  XXXX  console=True\n"),
+        ("*** Keyword ***\nMy Keyword\n    Log  XXXX  console=True\n"),
         "MyKeyword",
-        ("*** Keyword ***\n" "My Keyword\n" "    Log  YYYY  console=True\n"),
+        ("*** Keyword ***\nMy Keyword\n    Log  YYYY  console=True\n"),
         "MyKeyword",
     ]
 

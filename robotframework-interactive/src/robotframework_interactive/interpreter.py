@@ -21,9 +21,9 @@ ast being added really late into Robot Framework and not from the start).
 
 So, the approach being taken is the following:
 
-1. Pre-create a test suite which will call a keyword where we'll pause to 
+1. Pre-create a test suite which will call a keyword where we'll pause to
    actually execute the main loop.
-   
+
 2. In the main loop, collect the AST and then use the related builders to create
    the structure required to actually run, but instead of just blindly running it,
    verify what was actually loaded and dispatch accordingly (so, for instance,
@@ -40,6 +40,7 @@ There is already a project which provides an interpreter:
     section and then execute it, copying back and forth the imports/variables/keywords
     between section evaluations.
 """
+
 from robotframework_interactive.callbacks import Callback, CallbackWithReturn
 import traceback
 from ast import NodeVisitor
