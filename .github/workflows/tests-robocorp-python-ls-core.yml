@@ -22,7 +22,6 @@ jobs:
         name: [
           "windows-py311",
           "ubuntu-py39",
-          "macos-py38"
         ]
         
         include:
@@ -32,9 +31,6 @@ jobs:
           - name: "ubuntu-py39"
             python: "3.9"
             os: ubuntu-latest
-          - name: "macos-py38"
-            python: "3.8"
-            os: macos-latest
 
     steps:
     - name: Checkout repository
