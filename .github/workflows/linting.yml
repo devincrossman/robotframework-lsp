@@ -19,7 +19,7 @@ jobs:
 
       - name: Install pip deps
         run: |
-          python -m pip install --upgrade pip fire robotframework-output-stream ruff
+          python -m pip install --upgrade pip fire robotframework-output-stream ruff mypy types-mock
           
           python -m venv .venv
           source ./.venv/bin/activate
