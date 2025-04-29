@@ -19,7 +19,7 @@ jobs:
 
       - name: Install pip deps
         run: |
-          python -m pip install --upgrade pip fire poetry
+          python -m pip install --upgrade pip fire robotframework-output-stream ruff
           
           python -m venv .venv
           source ./.venv/bin/activate
