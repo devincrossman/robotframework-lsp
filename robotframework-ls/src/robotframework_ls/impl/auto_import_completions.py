@@ -54,9 +54,9 @@ class _Collector(object):
             if not self._matcher.accepts_keyword_name(keyword_name):
                 return False
 
-        keywords_found: Optional[
-            List[IKeywordFound]
-        ] = self.imported_keyword_name_to_keyword.get(keyword_name)
+        keywords_found: Optional[List[IKeywordFound]] = (
+            self.imported_keyword_name_to_keyword.get(keyword_name)
+        )
         if not keywords_found:
             return True
 

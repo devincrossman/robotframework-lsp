@@ -27,7 +27,7 @@ _attribute_escapes = _generic_escapes + (
     ("\r", "&#13;"),
     ("\t", "&#09;"),
 )
-_illegal_chars_in_xml = re.compile("[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]")
+_illegal_chars_in_xml = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
 
 
 def html_escape(text, linkify=True):

@@ -70,9 +70,9 @@ def _import_helper(import_callback, project_name):
             vendored_folder = os.path.join(src_folder, "robotframework_ls", "vendored")
             log_contents.append(f"Using vendored mode. Found: {vendored_folder}")
             use_folder = vendored_folder
-            assert os.path.isdir(
-                use_folder
-            ), f"Expected: {use_folder} to exist and be a directory."
+            assert os.path.isdir(use_folder), (
+                f"Expected: {use_folder} to exist and be a directory."
+            )
 
             if use_folder not in sys.path:
                 sys.path.append(use_folder)

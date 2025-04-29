@@ -71,9 +71,9 @@ class LaunchProcessDebugAdapterRobotTargetComm(BaseLaunchProcessTargetComm):
         )
 
         try:
-            assert (
-                self._server_socket is not None
-            ), "start_listening must be called before start()"
+            assert self._server_socket is not None, (
+                "start_listening must be called before start()"
+            )
 
             # while True:
             # Only handle a single connection...

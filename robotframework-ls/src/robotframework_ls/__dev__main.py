@@ -5,6 +5,7 @@ This makes it easier to start it under a debugger.
 
 The extension must have the "robot.language-server.tcp-port" setting set to 1456.
 """
+
 import sys
 
 

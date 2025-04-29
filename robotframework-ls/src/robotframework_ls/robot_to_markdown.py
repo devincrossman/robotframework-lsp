@@ -17,10 +17,11 @@
 # limitations under the License.
 
 """
-This was based on robot.utils.htmlformatters.HtmlFormatter from Robot Framework and adapted 
+This was based on robot.utils.htmlformatters.HtmlFormatter from Robot Framework and adapted
 in robotCode (https://github.com/d-biehl/robotcode/blob/v0.5.5/robotcode/language_server/robotframework/utils/markdownformatter.py)
 to deal with Markdown.
 """
+
 from __future__ import annotations
 
 import functools
@@ -40,8 +41,7 @@ class Formatter(ABC):
         return self._handles(line.strip() if self._strip_lines else line)
 
     @abstractmethod
-    def _handles(self, line: str) -> bool:
-        ...
+    def _handles(self, line: str) -> bool: ...
 
     def add(self, line: str) -> None:
         self._lines.append(line.strip() if self._strip_lines else line)
@@ -52,8 +52,7 @@ class Formatter(ABC):
         return result
 
     @abstractmethod
-    def format(self, lines: List[str]) -> str:
-        ...
+    def format(self, lines: List[str]) -> str: ...
 
 
 class MarkDownFormatter:
@@ -103,15 +102,13 @@ class SingleLineFormatter(Formatter):
         return bool(not self._lines and self.match(line))
 
     @abstractmethod
-    def match(self, line: str) -> Optional[re.Match[str]]:
-        ...
+    def match(self, line: str) -> Optional[re.Match[str]]: ...
 
     def format(self, lines: List[str]) -> str:
         return self.format_line(lines[0])
 
     @abstractmethod
-    def format_line(self, line: str) -> str:
-        ...
+    def format_line(self, line: str) -> str: ...
 
 
 class HeaderFormatter(SingleLineFormatter):
@@ -379,14 +376,14 @@ class TableFormatter(Formatter):
 
         for row in header_rows or [[]]:
             row += [""] * (max_columns - len(row))
-            table.append(f'|{"|".join(self._format_cell(cell) for cell in row)}|')
+            table.append(f"|{'|'.join(self._format_cell(cell) for cell in row)}|")
 
         row_ = [" :--- "] * max_columns
-        table.append(f'|{"|".join(row_)}|')
+        table.append(f"|{'|'.join(row_)}|")
 
         for row in body_rows:
             row += [""] * (max_columns - len(row))
-            table.append(f'|{"|".join(self._format_cell(cell) for cell in row)}|')
+            table.append(f"|{'|'.join(self._format_cell(cell) for cell in row)}|")
 
         return "\n".join(table) + "\n\n"
 

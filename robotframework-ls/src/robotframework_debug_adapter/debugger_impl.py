@@ -8,6 +8,7 @@ More specifically:
 
     is patched so that we can stop when some line is about to be executed.
 """
+
 import functools
 from robotframework_debug_adapter import file_utils
 import threading

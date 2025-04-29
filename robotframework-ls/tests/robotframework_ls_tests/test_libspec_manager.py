@@ -90,9 +90,9 @@ def method6():
     assert library_info is not None
     keywords: List[KeywordDoc] = library_info.keywords
     data_regression.check([keyword_to_dict(k) for k in keywords])
-    assert (
-        int(library_info.specversion) <= 6
-    ), "Libspec version changed. Check parsing. "
+    assert int(library_info.specversion) <= 6, (
+        "Libspec version changed. Check parsing. "
+    )
 
 
 def test_libspec_string_source(libspec_manager, workspace_dir, data_regression):

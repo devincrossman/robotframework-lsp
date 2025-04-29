@@ -1,5 +1,4 @@
-""" optional jupyter[lab]_lsp integration
-"""
+"""optional jupyter[lab]_lsp integration"""
 
 
 def spec_v1(app):

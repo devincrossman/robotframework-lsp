@@ -147,9 +147,9 @@ def check_ws():
     for created in all_created:
         c = created()
         if c is not None:
-            assert (
-                c._disposed.is_set()
-            ), "_VirtualFSThread not disposed properly in test."
+            assert c._disposed.is_set(), (
+                "_VirtualFSThread not disposed properly in test."
+            )
     all_created = []
 
 

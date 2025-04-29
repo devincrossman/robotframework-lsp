@@ -260,9 +260,9 @@ class _RfInterpretersManager:
             RfInterpreterServerManager,
         )
 
-        rf_info_or_dict_error: Union[
-            _RfInfo, ActionResultDict
-        ] = self.get_interpreter_from_arguments(arguments)
+        rf_info_or_dict_error: Union[_RfInfo, ActionResultDict] = (
+            self.get_interpreter_from_arguments(arguments)
+        )
         if isinstance(rf_info_or_dict_error, dict):
             return rf_info_or_dict_error
 
@@ -291,9 +291,9 @@ class _RfInterpretersManager:
 
         import_rf_interactive()
 
-        rf_info_or_dict_error: Union[
-            _RfInfo, ActionResultDict
-        ] = self.get_interpreter_from_arguments(arguments)
+        rf_info_or_dict_error: Union[_RfInfo, ActionResultDict] = (
+            self.get_interpreter_from_arguments(arguments)
+        )
         if isinstance(rf_info_or_dict_error, dict):
             return rf_info_or_dict_error
 
@@ -324,9 +324,9 @@ def _handle_semantic_tokens(
     # text so that we can get the semantic tokens based on the full
     # text that'll actually be evaluated.
 
-    rf_info_or_dict_error: Union[
-        _RfInfo, ActionResultDict
-    ] = rf_interpreters_manager.get_interpreter_from_arguments(arguments)
+    rf_info_or_dict_error: Union[_RfInfo, ActionResultDict] = (
+        rf_interpreters_manager.get_interpreter_from_arguments(arguments)
+    )
     if isinstance(rf_info_or_dict_error, dict):
         msg = rf_info_or_dict_error.get("message")
         if msg:
@@ -389,9 +389,9 @@ def _handle_semantic_tokens(
 
 
 def _handle_completions(language_server_impl, rf_interpreters_manager, arguments):
-    rf_info_or_dict_error: Union[
-        _RfInfo, ActionResultDict
-    ] = rf_interpreters_manager.get_interpreter_from_arguments(arguments)
+    rf_info_or_dict_error: Union[_RfInfo, ActionResultDict] = (
+        rf_interpreters_manager.get_interpreter_from_arguments(arguments)
+    )
     if isinstance(rf_info_or_dict_error, dict):
         msg = rf_info_or_dict_error.get("message")
         if msg:
@@ -464,9 +464,9 @@ def _handle_completions(language_server_impl, rf_interpreters_manager, arguments
 def _handle_resolve_completion(
     language_server_impl, rf_interpreters_manager, arguments
 ):
-    rf_info_or_dict_error: Union[
-        _RfInfo, ActionResultDict
-    ] = rf_interpreters_manager.get_interpreter_from_arguments(arguments)
+    rf_info_or_dict_error: Union[_RfInfo, ActionResultDict] = (
+        rf_interpreters_manager.get_interpreter_from_arguments(arguments)
+    )
     if isinstance(rf_info_or_dict_error, dict):
         msg = rf_info_or_dict_error.get("message")
         if msg:

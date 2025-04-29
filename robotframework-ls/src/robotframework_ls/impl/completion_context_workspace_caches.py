@@ -111,9 +111,9 @@ class CompletionContextWorkspaceCaches:
                             self._on_dependency_changed(uri)
 
                     did_invalidate_entry = True
-                    invalidated: Optional[
-                        ICompletionContextDependencyGraph
-                    ] = self._cached.pop(key, None)
+                    invalidated: Optional[ICompletionContextDependencyGraph] = (
+                        self._cached.pop(key, None)
+                    )
                     if BaseOptions.DEBUG_CACHE_DEPS and invalidated:
                         log.info(
                             "Invalidated: %s\n%s\n",

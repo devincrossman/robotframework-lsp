@@ -106,9 +106,9 @@ def complete_all(
                 token_info.stack, token_info.node, token_info.token
             )
             if token is not None:
-                keyword_name_to_keyword_found: Dict[
-                    str, List[IKeywordFound]
-                ] = collect_keyword_name_to_keyword_found(completion_context)
+                keyword_name_to_keyword_found: Dict[str, List[IKeywordFound]] = (
+                    collect_keyword_name_to_keyword_found(completion_context)
+                )
                 ret.extend(keyword_completions.complete(completion_context))
                 ret.extend(
                     auto_import_completions.complete(
@@ -685,9 +685,9 @@ class RobotFrameworkServerApi(PythonLanguageServer):
         if definition_info is None:
             return []
 
-        origin_selection_range: Optional[
-            RangeTypedDict
-        ] = definition_info.origin_selection_range
+        origin_selection_range: Optional[RangeTypedDict] = (
+            definition_info.origin_selection_range
+        )
 
         ret = []
         definition: IDefinition

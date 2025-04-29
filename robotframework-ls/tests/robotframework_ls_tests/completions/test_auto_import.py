@@ -544,9 +544,9 @@ User can call library
 
     assert workspace.get_doc("case1.robot") is doc
 
-    assert (
-        len(completions) == 1
-    ), f"No completions found. Symbols cache: {workspace.get_doc('case1.robot').symbols_cache.get_json_list()}"
+    assert len(completions) == 1, (
+        f"No completions found. Symbols cache: {workspace.get_doc('case1.robot').symbols_cache.get_json_list()}"
+    )
     apply_completion(doc2, completions[0])
 
     assert (
@@ -589,10 +589,10 @@ KeywordInCase1
         )
     )
 
-    keyword_name_to_keyword_found: Dict[
-        str, List[IKeywordFound]
-    ] = collect_keyword_name_to_keyword_found(
-        CompletionContext(doc_foobar, workspace=workspace.ws)
+    keyword_name_to_keyword_found: Dict[str, List[IKeywordFound]] = (
+        collect_keyword_name_to_keyword_found(
+            CompletionContext(doc_foobar, workspace=workspace.ws)
+        )
     )
 
     doc2 = setup_case2_in_dir_doc
@@ -724,9 +724,9 @@ Testing Completion Here
     workspace.ws.wait_for_check_done(5)
     context = CompletionContext(doc, workspace=workspace.ws, config=config)
 
-    keyword_name_to_keyword_found: Dict[
-        str, List[IKeywordFound]
-    ] = collect_keyword_name_to_keyword_found(context)
+    keyword_name_to_keyword_found: Dict[str, List[IKeywordFound]] = (
+        collect_keyword_name_to_keyword_found(context)
+    )
 
     completions = auto_import_completions.complete(
         context, keyword_name_to_keyword_found

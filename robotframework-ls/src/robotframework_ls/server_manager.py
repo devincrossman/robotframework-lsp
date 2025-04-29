@@ -202,9 +202,9 @@ class _ServerApi(object):
     def get_robotframework_api_client(self) -> Optional[IRobotFrameworkApiClient]:
         self._check_in_main_thread()
         workspace = self.workspace
-        assert (
-            workspace
-        ), "The workspace must be already set when getting the server api."
+        assert workspace, (
+            "The workspace must be already set when getting the server api."
+        )
 
         server_process = self._server_process
 
