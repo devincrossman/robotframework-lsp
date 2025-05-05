@@ -112,7 +112,7 @@ class RobotFrameworkFacade(object):
 
         IS_ROBOT_4_ONWARDS = is_robot_version_at_least(4)
         IS_ROBOT_7_ONWARDS = is_robot_version_at_least(7)
-        if IS_ROBOT_4_ONWARDS:
+        if IS_ROBOT_4_ONWARDS and not IS_ROBOT_7_ONWARDS:
             if len(test.body) == 1:
                 # Unfortunately bodyrunner.BodyRunner.run doesn't return the
                 # value, so, we have to do it ourselves.
@@ -142,8 +142,8 @@ class RobotFrameworkFacade(object):
             BodyRunner(context, templated=False).run(test.body)
             return None
         elif IS_ROBOT_7_ONWARDS:
-            from robot.running.bodyrunner import BodyRunner
-            from robot.result.model import TestCase as TestCaseResult
+            from robot.running.bodyrunner import BodyRunner # noqa
+            from robot.result.model import TestCase as TestCaseResult # noqa
 
             result = TestCaseResult(name=test.name)
             BodyRunner(context, templated=False).run(test, result)
