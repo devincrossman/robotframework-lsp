@@ -579,7 +579,9 @@ class RobotFrameworkInterpreter(object):
         return {"success": True, "message": None, "result": None}
 
     def _set_source(self, element, source):
-        try:
-            element.source = source
-        except AttributeError:
-            element.parent.source = source
+        # try:
+        #     element.source = source
+        # except AttributeError:
+        #     element.parent.source = source
+        # Newer Robot Framework models don't allow setting .source
+        pass
