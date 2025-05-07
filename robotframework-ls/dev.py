@@ -82,12 +82,6 @@ class Dev(object):
             version, os.path.join(".", "src", "robotframework_ls", "__init__.py")
         )
 
-        update_version(
-            version,
-            os.path.join("..", "robotframework-intellij", "build.gradle"),
-            _fix_intellij_contents_version,
-        )
-
     def get_tag(self):
         import subprocess
 

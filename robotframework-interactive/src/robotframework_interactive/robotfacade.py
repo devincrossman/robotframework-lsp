@@ -73,6 +73,14 @@ class RobotFrameworkFacade(object):
     def get_libraries_imported_in_namespace(self):
         EXECUTION_CONTEXTS = self.EXECUTION_CONTEXTS
         return set(EXECUTION_CONTEXTS.current.namespace._kw_store.libraries)
+    
+    def is_robot_version_at_least(self, major):
+        from robot import version
+        try:
+            ver = version.get_version().split(".")
+            return int(ver[0]) >= major
+        except Exception:
+            return False
 
     def run_test_body(self, context, test, model):
         assign_token = None
@@ -101,17 +109,8 @@ class RobotFrameworkFacade(object):
         if assign_token:
             return context.namespace.variables.replace_string(str(token))
 
-        from robot import version
-
-        def is_robot_version_at_least(major):
-            try:
-                ver = version.get_version().split(".")
-                return int(ver[0]) >= major
-            except Exception:
-                return False
-
-        IS_ROBOT_4_ONWARDS = is_robot_version_at_least(4)
-        IS_ROBOT_7_ONWARDS = is_robot_version_at_least(7)
+        IS_ROBOT_4_ONWARDS = self.is_robot_version_at_least(4)
+        IS_ROBOT_7_ONWARDS = self.is_robot_version_at_least(7)
         if IS_ROBOT_4_ONWARDS and not IS_ROBOT_7_ONWARDS:
             if len(test.body) == 1:
                 # Unfortunately bodyrunner.BodyRunner.run doesn't return the
@@ -144,9 +143,11 @@ class RobotFrameworkFacade(object):
         elif IS_ROBOT_7_ONWARDS:
             from robot.running.bodyrunner import BodyRunner # noqa
             from robot.result.model import TestCase as TestCaseResult # noqa
-
+            
             result = TestCaseResult(name=test.name)
+
             BodyRunner(context, templated=False).run(test, result)
+
             return None
         else:
             from robot.running.steprunner import StepRunner  # noqa
