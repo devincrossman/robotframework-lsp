@@ -111,7 +111,7 @@ class RobotFrameworkFacade(object):
 
         IS_ROBOT_4_ONWARDS = self.is_robot_version_at_least(4)
         IS_ROBOT_7_ONWARDS = self.is_robot_version_at_least(7)
-        if IS_ROBOT_4_ONWARDS and not IS_ROBOT_7_ONWARDS:
+        if IS_ROBOT_4_ONWARDS:
             if len(test.body) == 1:
                 # Unfortunately bodyrunner.BodyRunner.run doesn't return the
                 # value, so, we have to do it ourselves.
@@ -124,7 +124,12 @@ class RobotFrameworkFacade(object):
                 step = next(iter(test.body))
                 ret = None
                 try:
-                    ret = step.run(context, True, False)
+                    if IS_ROBOT_7_ONWARDS:
+                        from robot.result import Keyword as KeywordResult
+                        result = KeywordResult()
+                        ret = step.run(result, context, True, False)
+                    else:
+                        ret = step.run(context, True, False)
                 except ExecutionPassed as exception:
                     exception.set_earlier_failures(errors)
                     passed = exception
@@ -137,17 +142,13 @@ class RobotFrameworkFacade(object):
                 return ret
 
             from robot.running.bodyrunner import BodyRunner  # noqa
-
-            BodyRunner(context, templated=False).run(test.body)
-            return None
-        elif IS_ROBOT_7_ONWARDS:
-            from robot.running.bodyrunner import BodyRunner # noqa
-            from robot.result.model import TestCase as TestCaseResult # noqa
-            
-            result = TestCaseResult(name=test.name)
-
-            BodyRunner(context, templated=False).run(test, result)
-
+            if IS_ROBOT_7_ONWARDS:
+                from robot.result.model import TestCase as TestCaseResult # noqa
+                
+                result = TestCaseResult(name=test.name)
+                BodyRunner(context, templated=False).run(test, result)
+            else:
+                BodyRunner(context, templated=False).run(test.body)
             return None
         else:
             from robot.running.steprunner import StepRunner  # noqa

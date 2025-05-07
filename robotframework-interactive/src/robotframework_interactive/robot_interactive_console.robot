@@ -1,6 +1,6 @@
 *** Settings ***
 Library    robotframework_interactive.main_loop    WITH NAME     MainLoop
 
-*** Test Case ***
+*** Test Cases ***
 Default Task/Test
     MainLoop.Interpreter Main Loop
