@@ -4,10 +4,11 @@ This is a fork of the original [Robocorp robotframework-lsp monorepo](https://gi
 
 ## ⚠️ About this Fork
 
-This fork is being developed and maintained solely to apply updates and fixes that align with my specific use case and to ensure compatibility with the latest versions of [Robot Framework](https://robotframework.org/).
+This fork is being developed and maintained solely to apply updates and fixes that align with our specific use case and to ensure compatibility with the latest versions of [Robot Framework](https://robotframework.org/).
 
 Key points:
 
+- ✅ **Adding support for RF >= 7**
 - ✅ **Focused exclusively on VS Code** support.  
 - ❌ **Support for IntelliJ** has been removed.  
 - ❌ **Robocorp-specific extension code** has been removed.

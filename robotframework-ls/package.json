@@ -1,20 +1,20 @@
 {
-    "name": "robotframework-lsp",
+    "name": "kraken-robotframework-lsp",
     "displayName": "Robot Framework Language Server",
     "description": "VSCode extension support for Robot Framework",
-    "author": "Fabio Zadrozny",
-    "homepage": "https://github.com/robocorp/robotframework-lsp/blob/robotframework-lsp-1.13.2/robotframework-ls/README.md",
+    "author": "Devin Crossman (based on original work by Fabio Zadrozny)",
+    "homepage": "https://github.com/devincrossman/robotframework-lsp/blob/robotframework-lsp-1.13.2/robotframework-ls/README.md",
     "repository": {
         "type": "git",
-        "url": "https://github.com/robocorp/robotframework-lsp.git"
+        "url": "https://github.com/devincrossman/robotframework-lsp.git"
     },
     "bugs": {
-        "url": "https://github.com/robocorp/robotframework-lsp/issues"
+        "url": "https://github.com/devincrossman/robotframework-lsp/issues"
     },
     "license": "Apache 2.0",
     "version": "1.13.2",
     "icon": "images/icon.png",
-    "publisher": "robocorp",
+    "publisher": "Kraken",
     "categories": [
         "Linters",
         "Programming Languages",
@@ -28,7 +28,7 @@
     "activationEvents": [
         "onLanguage:robotframework",
         "onDebugInitialConfigurations",
-        "onDebugResolve:robotframework-lsp",
+        "onDebugResolve:kraken-robotframework-lsp",
         "onCommand:robot.addPluginsDir",
         "onCommand:robot.getLanguageServerVersion",
         "onCommand:robot.getInternalInfo",
@@ -787,7 +787,7 @@
         ],
         "debuggers": [
             {
-                "type": "robotframework-lsp",
+                "type": "kraken-robotframework-lsp",
                 "label": "Robot Framework",
                 "languages": [
                     "robotframework"
@@ -852,7 +852,7 @@
                         "label": "Robot Framework: Launch .robot file",
                         "description": "Add a new configuration for launching Robot Framework.",
                         "body": {
-                            "type": "robotframework-lsp",
+                            "type": "kraken-robotframework-lsp",
                             "name": "Robot Framework: Launch .robot file",
                             "request": "launch",
                             "cwd": "^\"\\${workspaceFolder}\"",
@@ -866,7 +866,7 @@
                         "label": "Robot Framework: Launch template",
                         "description": "This configuration may be used to customize launches which start from a code-lens or command shortcut.",
                         "body": {
-                            "type": "robotframework-lsp",
+                            "type": "kraken-robotframework-lsp",
                             "name": "Robot Framework: Launch template",
                             "request": "launch"
                         }

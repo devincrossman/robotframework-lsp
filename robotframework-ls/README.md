@@ -1,46 +1,10 @@
 # [Language Server Protocol](https://github.com/Microsoft/language-server-protocol) implementation for [Robot Framework](https://robotframework.org/)
 
-## Maintenance policy
+This is a fork of the original [Robocorp robotframework-lsp monorepo](https://github.com/robocorp/robotframework-lsp).
 
-This extension is part of the Robocorp and Sema4.ai automation and AI agent stack,
-maintained specifically for our customers. While it is free to use, please be aware
-that support for the latest Robot Framework releases may not be available.
-If you’re interested in using the latest Robot Framework for test automation,
-we recommend exploring other extensions.
+## About this Fork
 
-## Requirements
-
-Python 3.7+ and [Robot Framework](https://robotframework.org/) 3.2+.
-
-Note: if using the [Robot Framework Selenium Library](https://github.com/robotframework/SeleniumLibrary), version 4.4+ is required.
-
-## Installing
-
-`Robot Framework Language Server` can be installed from the [VisualStudio Marketplace](https://marketplace.visualstudio.com/items?itemName=robocorp.robotframework-lsp) or as a `.vsix`.
-
-To get a `.vsix`, download the latest `Deploy - RobotFramework Language Server Extension` in [Robotframework-lsp Github Actions](https://github.com/robocorp/robotframework-lsp/actions?query=workflow%3A%22Deploy+-+RobotFramework+Language+Server+Extension%22).
-
-See: [Install from a vsix](https://code.visualstudio.com/docs/editor/extension-gallery#_install-from-a-vsix) for details installing a `.vsix` into VSCode.
-
-See: [Getting Started](https://robocorp.com/docs/developer-tools/visual-studio-code/lsp-extension#what-is-the-language-server-protocol-lsp-and-why-is-it-useful) for a tutorial with some screenshots.
-
-## Configuration
-
-After having `Robot Framework Language Server` installed, some configurations (such as specifying
-the python executable used for launching the Language Server or Robot Framework)
-may be needed.
-
-See: [Config](docs/config.md) for details.
-
-See: [FAQ](docs/faq.md) for common issues encountered while configuring the language server.
-
-## Contributing
-
-See: [Contributing](docs/contributing.md) for how to help in the development of `Robot Framework Language Server`.
-
-## Reporting Issues
-
-See: [Reporting Issue](docs/reporting_issues.md) for details on how to report some issue in the `Robot Framework Language Server`.
+This fork is being developed and maintained solely to apply updates and fixes that align with our specific use case and to ensure compatibility with the latest versions of [Robot Framework](https://robotframework.org/).
 
 ## Features (1.13.0)
 

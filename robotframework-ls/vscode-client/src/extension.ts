@@ -453,12 +453,12 @@ async function startLanguageServer(): Promise<LanguageClient> {
     // ask it to start indexing only after ready.
     commands.executeCommand("robot.startIndexing.internal");
 
-    let version = extensions.getExtension("robocorp.robotframework-lsp").packageJSON.version;
+    let version = extensions.getExtension("kraken.kraken-robotframework-lsp").packageJSON.version;
     try {
         let lsVersion = await commands.executeCommand("robot.getLanguageServerVersion");
         if (lsVersion != version) {
             window.showErrorMessage(
-                "Error: expected robotframework-lsp version: " +
+                "Error: expected kraken-robotframework-lsp version: " +
                     version +
                     ". Found: " +
                     lsVersion +
@@ -468,7 +468,7 @@ async function startLanguageServer(): Promise<LanguageClient> {
         }
     } catch (err) {
         let msg =
-            "Error: robotframework-lsp version mismatch. Please uninstall the older version from the python environment.";
+            "Error: kraken-robotframework-lsp version mismatch. Please uninstall the older version from the python environment.";
         logError(msg, err, "EXT_VERSION_MISMATCH");
         window.showErrorMessage(msg);
     }

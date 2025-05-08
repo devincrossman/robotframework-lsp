@@ -511,12 +511,11 @@ class RobotFrameworkInterpreter(object):
 
         if new_suite.resource.variables:
             # Handle variables defined in the current test.
-            for variable in new_suite.resource.variables:
-                if not IS_ROBOT_7_ONWARDS:
-                    self._set_source(variable, source)
             if IS_ROBOT_7_ONWARDS:
                 namespace.variables.set_from_variable_section(new_suite.resource.variables)
             else:
+                for variable in new_suite.resource.variables:
+                    self._set_source(variable, source)
                 namespace.variables.set_from_variable_table(new_suite.resource.variables)
 
         if new_suite.resource.keywords:
