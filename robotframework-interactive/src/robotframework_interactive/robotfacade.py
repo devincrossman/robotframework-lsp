@@ -73,9 +73,10 @@ class RobotFrameworkFacade(object):
     def get_libraries_imported_in_namespace(self):
         EXECUTION_CONTEXTS = self.EXECUTION_CONTEXTS
         return set(EXECUTION_CONTEXTS.current.namespace._kw_store.libraries)
-    
+
     def is_robot_version_at_least(self, major):
         from robot import version
+
         try:
             ver = version.get_version().split(".")
             return int(ver[0]) >= major
@@ -126,6 +127,7 @@ class RobotFrameworkFacade(object):
                 try:
                     if IS_ROBOT_7_ONWARDS:
                         from robot.result import Keyword as KeywordResult
+
                         result = KeywordResult()
                         ret = step.run(result, context, True, False)
                     else:
@@ -142,9 +144,10 @@ class RobotFrameworkFacade(object):
                 return ret
 
             from robot.running.bodyrunner import BodyRunner  # noqa
+
             if IS_ROBOT_7_ONWARDS:
-                from robot.result.model import TestCase as TestCaseResult # noqa
-                
+                from robot.result.model import TestCase as TestCaseResult  # noqa
+
                 result = TestCaseResult(name=test.name)
                 BodyRunner(context, templated=False).run(test, result)
             else:

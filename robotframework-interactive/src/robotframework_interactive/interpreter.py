@@ -490,7 +490,11 @@ class RobotFrameworkInterpreter(object):
         source = os.path.join(
             os.path.abspath(os.getcwd()), "in_memory_interpreter.robot"
         )
-        new_suite = TestSuite(name="Default test suite", source=source) if IS_ROBOT_7_ONWARDS else TestSuite(name="Default test suite")
+        new_suite = (
+            TestSuite(name="Default test suite", source=source)
+            if IS_ROBOT_7_ONWARDS
+            else TestSuite(name="Default test suite")
+        )
         defaults = TestDefaults()
 
         SettingsBuilder(new_suite, defaults).visit(model)
@@ -499,9 +503,9 @@ class RobotFrameworkInterpreter(object):
         # ---------------------- handle what was loaded in the settings builder.
         current_context = EXECUTION_CONTEXTS.current
         namespace = current_context.namespace
-        
+
         if IS_ROBOT_7_ONWARDS:
-            new_suite.adjust_source() # update suite source
+            new_suite.adjust_source()  # update suite source
 
         for new_import in new_suite.resource.imports:
             if not IS_ROBOT_7_ONWARDS:
@@ -512,15 +516,23 @@ class RobotFrameworkInterpreter(object):
         if new_suite.resource.variables:
             # Handle variables defined in the current test.
             if IS_ROBOT_7_ONWARDS:
-                namespace.variables.set_from_variable_section(new_suite.resource.variables)
+                namespace.variables.set_from_variable_section(
+                    new_suite.resource.variables
+                )
             else:
                 for variable in new_suite.resource.variables:
                     self._set_source(variable, source)
-                namespace.variables.set_from_variable_table(new_suite.resource.variables)
+                namespace.variables.set_from_variable_table(
+                    new_suite.resource.variables
+                )
 
         if new_suite.resource.keywords:
             # It'd be really nice to have a better API for this...
-            user_keywords = namespace._kw_store.suite_file.keywords if IS_ROBOT_7_ONWARDS else namespace._kw_store.user_keywords
+            user_keywords = (
+                namespace._kw_store.suite_file.keywords
+                if IS_ROBOT_7_ONWARDS
+                else namespace._kw_store.user_keywords
+            )
             if IS_ROBOT_7_ONWARDS:
                 for kw in new_suite.resource.keywords:
                     user_keywords.append(kw)
