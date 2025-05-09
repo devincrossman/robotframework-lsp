@@ -74,6 +74,15 @@ class RobotFrameworkFacade(object):
         EXECUTION_CONTEXTS = self.EXECUTION_CONTEXTS
         return set(EXECUTION_CONTEXTS.current.namespace._kw_store.libraries)
 
+    def is_robot_version_at_least(self, major):
+        from robot import version
+
+        try:
+            ver = version.get_version().split(".")
+            return int(ver[0]) >= major
+        except Exception:
+            return False
+
     def run_test_body(self, context, test, model):
         assign_token = None
         if len(model.sections) == 1:
@@ -101,9 +110,8 @@ class RobotFrameworkFacade(object):
         if assign_token:
             return context.namespace.variables.replace_string(str(token))
 
-        from robot import version
-
-        IS_ROBOT_4_ONWARDS = not version.get_version().startswith("3.")
+        IS_ROBOT_4_ONWARDS = self.is_robot_version_at_least(4)
+        IS_ROBOT_7_ONWARDS = self.is_robot_version_at_least(7)
         if IS_ROBOT_4_ONWARDS:
             if len(test.body) == 1:
                 # Unfortunately bodyrunner.BodyRunner.run doesn't return the
@@ -117,7 +125,13 @@ class RobotFrameworkFacade(object):
                 step = next(iter(test.body))
                 ret = None
                 try:
-                    ret = step.run(context, True, False)
+                    if IS_ROBOT_7_ONWARDS:
+                        from robot.result import Keyword as KeywordResult
+
+                        result = KeywordResult()
+                        ret = step.run(result, context, True, False)
+                    else:
+                        ret = step.run(context, True, False)
                 except ExecutionPassed as exception:
                     exception.set_earlier_failures(errors)
                     passed = exception
@@ -131,7 +145,13 @@ class RobotFrameworkFacade(object):
 
             from robot.running.bodyrunner import BodyRunner  # noqa
 
-            BodyRunner(context, templated=False).run(test.body)
+            if IS_ROBOT_7_ONWARDS:
+                from robot.result.model import TestCase as TestCaseResult  # noqa
+
+                result = TestCaseResult(name=test.name)
+                BodyRunner(context, templated=False).run(test, result)
+            else:
+                BodyRunner(context, templated=False).run(test.body)
             return None
         else:
             from robot.running.steprunner import StepRunner  # noqa

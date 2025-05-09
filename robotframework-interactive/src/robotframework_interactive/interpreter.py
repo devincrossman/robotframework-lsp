@@ -443,6 +443,7 @@ class RobotFrameworkInterpreter(object):
         from robot.api import Token
 
         facade = RobotFrameworkFacade()
+        IS_ROBOT_7_ONWARDS = facade.is_robot_version_at_least(7)
         get_model = facade.get_model
         TestSuite = facade.TestSuite
         TestDefaults = facade.TestDefaults
@@ -486,7 +487,14 @@ class RobotFrameworkInterpreter(object):
         #     self._last_block_mode_and_indent = block_mode
         #     self._last_section_name = last_section_name
 
-        new_suite = TestSuite(name="Default test suite")
+        source = os.path.join(
+            os.path.abspath(os.getcwd()), "in_memory_interpreter.robot"
+        )
+        new_suite = (
+            TestSuite(name="Default test suite", source=source)
+            if IS_ROBOT_7_ONWARDS
+            else TestSuite(name="Default test suite")
+        )
         defaults = TestDefaults()
 
         SettingsBuilder(new_suite, defaults).visit(model)
@@ -495,36 +503,53 @@ class RobotFrameworkInterpreter(object):
         # ---------------------- handle what was loaded in the settings builder.
         current_context = EXECUTION_CONTEXTS.current
         namespace = current_context.namespace
-        source = os.path.join(
-            os.path.abspath(os.getcwd()), "in_memory_interpreter.robot"
-        )
+
+        if IS_ROBOT_7_ONWARDS:
+            new_suite.adjust_source()  # update suite source
+
         for new_import in new_suite.resource.imports:
-            self._set_source(new_import, source)
+            if not IS_ROBOT_7_ONWARDS:
+                self._set_source(new_import, source)
             # Actually do the import (library, resource, variable)
             namespace._import(new_import)
 
         if new_suite.resource.variables:
             # Handle variables defined in the current test.
-            for variable in new_suite.resource.variables:
-                self._set_source(variable, source)
-
-            namespace.variables.set_from_variable_table(new_suite.resource.variables)
+            if IS_ROBOT_7_ONWARDS:
+                namespace.variables.set_from_variable_section(
+                    new_suite.resource.variables
+                )
+            else:
+                for variable in new_suite.resource.variables:
+                    self._set_source(variable, source)
+                namespace.variables.set_from_variable_table(
+                    new_suite.resource.variables
+                )
 
         if new_suite.resource.keywords:
             # It'd be really nice to have a better API for this...
-            user_keywords = namespace._kw_store.user_keywords
-            for kw in new_suite.resource.keywords:
-                try:
-                    kw.actual_source = source
-                except AttributeError:
-                    kw.parent.source = source
-                handler = user_keywords._create_handler(kw)
+            user_keywords = (
+                namespace._kw_store.suite_file.keywords
+                if IS_ROBOT_7_ONWARDS
+                else namespace._kw_store.user_keywords
+            )
+            if IS_ROBOT_7_ONWARDS:
+                for kw in new_suite.resource.keywords:
+                    user_keywords.append(kw)
+            else:
+                for kw in new_suite.resource.keywords:
+                    try:
+                        kw.actual_source = source
+                    except AttributeError:
+                        kw.parent.source = source
 
-                embedded = isinstance(handler, facade.EmbeddedArgumentsHandler)
-                if not embedded:
-                    if handler.name in user_keywords.handlers._normal:
-                        del user_keywords.handlers._normal[handler.name]
-                user_keywords.handlers.add(handler, embedded)
+                    handler = user_keywords._create_handler(kw)
+
+                    embedded = isinstance(handler, facade.EmbeddedArgumentsHandler)
+                    if not embedded:
+                        if handler.name in user_keywords.handlers._normal:
+                            del user_keywords.handlers._normal[handler.name]
+                    user_keywords.handlers.add(handler, embedded)
 
         # --------------------------------------- Actually run any test content.
         last_result = None

@@ -100,7 +100,7 @@ class InteractiveShellPanel {
         } else {
             feedback(
                 "vscode.iconsole.used",
-                vscode.extensions.getExtension("robocorp.robotframework-lsp").packageJSON.version
+                vscode.extensions.getExtension("kraken.kraken-robotframework-lsp").packageJSON.version
             );
         }
 
