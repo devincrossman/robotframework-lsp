@@ -13,6 +13,7 @@ from robotframework_ls.impl.robot_version import get_robot_major_version
 # We don't even support version 2, so, this is ok.
 IS_ROBOT_4_ONWARDS = get_robot_major_version() >= 4
 IS_ROBOT_5_ONWARDS = get_robot_major_version() >= 5
+IS_ROBOT_7_ONWARDS = get_robot_major_version() >= 5
 
 
 class DummyBusyWait(object):

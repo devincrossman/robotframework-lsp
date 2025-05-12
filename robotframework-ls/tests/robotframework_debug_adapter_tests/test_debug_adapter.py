@@ -252,7 +252,7 @@ def format_stack_frames(stack_frames):
 
 def test_debugger_for_workflow(debugger_api, data_regression):
     from robocorp_ls_core.debug_adapter_core.dap.dap_schema import TerminatedEvent
-    from robotframework_debug_adapter_tests.test_debugger_core import IS_ROBOT_4_ONWARDS
+    from robotframework_debug_adapter_tests.test_debugger_core import IS_ROBOT_4_ONWARDS, IS_ROBOT_7_ONWARDS
 
     debugger_api.initialize()
     target = debugger_api.get_dap_case_file(
@@ -271,7 +271,9 @@ def test_debugger_for_workflow(debugger_api, data_regression):
     stack_frames = json_hit.stack_trace_response.body.stackFrames
 
     suffix = ".v3"
-    if IS_ROBOT_4_ONWARDS:
+    if IS_ROBOT_7_ONWARDS:
+        suffix = ".v7"
+    elif IS_ROBOT_4_ONWARDS:
         suffix = ".v4"
 
     data_regression.check(
