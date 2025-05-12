@@ -578,9 +578,15 @@ class _EvaluationInfo(object):
         if self.context == "hover":
             try:
                 ctx = info.execution_context
-                return EvaluationResult(
-                    ctx.namespace.get_runner(self.expression).longname
-                )
+                runner = ctx.namespace.get_runner(self.expression)
+                if get_robot_major_minor_version()[0] >= 7:
+                    return EvaluationResult(
+                        f"{runner.keyword.owner.name}.{runner.name}"
+                    )
+                else:
+                    return EvaluationResult(
+                        runner.name
+                    )
             except:
                 log.exception("Error on hover evaluation: %s", self.expression)
                 return EvaluationResult("")
@@ -615,7 +621,13 @@ Evaluation
 
             kw = Keyword(name, args=node.args, assign=assign)
             ctx = info.execution_context
-            return EvaluationResult(kw.run(ctx))
+
+            if get_robot_major_minor_version()[0] >= 7:
+                from robot.result import Keyword as KeywordResult
+                result = KeywordResult()
+                return EvaluationResult(kw.run(result, ctx))
+            else:
+                return EvaluationResult(kw.run(ctx))
 
         raise UnableToEvaluateError("Unable to evaluate: %s" % (self.expression,))
 
