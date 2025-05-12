@@ -181,7 +181,9 @@ def test_debugger_core_for(
 
     dbg_wait_for(lambda: debugger_impl.busy_wait.proceeded == n_proceeded)
 
-    if IS_ROBOT_4_ONWARDS:
+    if IS_ROBOT_7_ONWARDS:
+        basename = "test_debugger_core_for.v7"
+    elif IS_ROBOT_4_ONWARDS:
         basename = "test_debugger_core_for.v4"
     else:
         basename = "test_debugger_core_for.v3"
