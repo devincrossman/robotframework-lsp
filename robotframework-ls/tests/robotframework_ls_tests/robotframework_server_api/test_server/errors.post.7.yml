@@ -1,0 +1,63 @@
+- code: DOC04
+  codeDescription:
+    href: https://robocop.readthedocs.io/en/6.1.1/rules_list.html#missing-doc-resource-file
+  message: Missing documentation in resource file
+  range:
+    end:
+      character: 0
+      line: 0
+    start:
+      character: 0
+      line: 0
+  severity: 2
+  source: robocop
+- code: LEN09
+  codeDescription:
+    href: https://robocop.readthedocs.io/en/6.1.1/rules_list.html#empty-section
+  message: Section '{section_name}' is empty
+  range:
+    end:
+      character: 14
+      line: 0
+    start:
+      character: 0
+      line: 0
+  severity: 2
+  source: robocop
+- code: NAME16
+  codeDescription:
+    href: https://robocop.readthedocs.io/en/6.1.1/rules_list.html#invalid-section
+  message: Invalid section '{invalid_section}'
+  range:
+    end:
+      character: 15
+      line: 0
+    start:
+      character: 0
+      line: 0
+  severity: 1
+  source: robocop
+- code: SPC02
+  codeDescription:
+    href: https://robocop.readthedocs.io/en/6.1.1/rules_list.html#missing-trailing-blank-line
+  message: Missing trailing blank line at the end of file
+  range:
+    end:
+      character: 15
+      line: 0
+    start:
+      character: 0
+      line: 0
+  severity: 2
+  source: robocop
+- message: 'Unrecognized section header ''*** foo bar ***''. Valid sections: ''Settings'',
+    ''Variables'', ''Keywords'' and ''Comments''.'
+  range:
+    end:
+      character: 15
+      line: 0
+    start:
+      character: 0
+      line: 0
+  severity: 1
+  source: robotframework

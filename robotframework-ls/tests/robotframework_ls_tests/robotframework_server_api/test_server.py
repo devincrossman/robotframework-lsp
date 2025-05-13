@@ -91,7 +91,9 @@ def test_server(server_api_process_io: IRobotFrameworkApiClient, data_regression
     diag = server_api_process_io.lint("untitled.resource")["result"]
     major, minor = get_robot_major_minor_version()
 
-    if (major, minor) >= (6, 1):
+    if major >= 7:  # to do: check robocop version also
+        basename = "errors.post.7"
+    elif (major, minor) >= (6, 1):
         basename = "errors.post.61"
     else:
         basename = "errors"

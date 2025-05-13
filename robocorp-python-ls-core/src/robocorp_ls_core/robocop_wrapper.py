@@ -32,9 +32,9 @@ def collect_robocop_diagnostics(
 ) -> List[DiagnosticsTypedDict]:
     _import_robocop()
 
-    import robocop
-    from robocop.config import Config
-    from robocop.utils import issues_to_lsp_diagnostic
+    from robocop.config import ConfigManager
+    from robocop.run import RobocopLinter
+    from robocop.linter.utils.misc import issues_to_lsp_diagnostic
 
     filename_parent = Path(filename).parent
     # Set the working directory to the project root (tricky handling: Robocop
@@ -46,14 +46,14 @@ def collect_robocop_diagnostics(
             os.chdir(project_root)
 
         if filename_parent.exists():
-            config = Config(root=filename_parent)
+            config_manager = ConfigManager(root=filename_parent)
         else:
             # Unsaved files.
-            config = Config(root=project_root)
-        robocop_runner = robocop.Robocop(config=config)
-        robocop_runner.reload_config()
+            config_manager = ConfigManager(root=project_root)
+        robocop_runner = RobocopLinter(config_manager=config_manager)
 
-        issues = robocop_runner.run_check(ast_model, filename, source)
+        config = config_manager.get_default_config(config_path=None)
+        issues = robocop_runner.run_check(ast_model, filename, config, source)
         diag_issues = typing.cast(
             List[DiagnosticsTypedDict], issues_to_lsp_diagnostic(issues)
         )
