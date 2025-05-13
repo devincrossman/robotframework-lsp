@@ -1,88 +1,170 @@
-import argparse
-import fnmatch
+from __future__ import annotations
+
 import os
-import re
-import sys
-from itertools import chain
+from dataclasses import dataclass, field, fields
+from enum import Enum
 from pathlib import Path
-from typing import Dict, Pattern, Set
+from typing import TYPE_CHECKING
 
-import tomli
-from robot.utils import FileReader
+from robot.errors import DataError
 
-from robocop.exceptions import (
-    ArgumentFileNotFoundError,
-    CircularArgumentFileError,
-    ConfigGeneralError,
-    InvalidArgumentError,
-)
-from robocop.files import DEFAULT_EXCLUDES, find_file_in_project_root, find_project_root
-from robocop.rules import RuleSeverity
-from robocop.utils import RecommendationFinder
-from robocop.version import __version__
+from robocop.linter.utils.misc import ROBOT_VERSION
 
+try:
+    from robot.api import Languages  # RF 6.0
+except ImportError:
+    Languages = None
+import pathspec
+import typer
+from typing_extensions import Self
 
-def translate_pattern(pattern: str) -> Pattern:
-    return re.compile(fnmatch.translate(pattern))
+from robocop import errors, files
+from robocop.formatter import formatters
+from robocop.formatter.skip import SkipConfig
+from robocop.formatter.utils import misc  # TODO merge with linter misc
+from robocop.linter import rules
+from robocop.linter.rules import BaseChecker, ProjectChecker, RuleSeverity
+from robocop.linter.utils.misc import compile_rule_pattern
+from robocop.linter.utils.version_matching import Version
 
+CONFIG_NAMES = frozenset(("robocop.toml", "pyproject.toml", "robot.toml"))
+DEFAULT_INCLUDE = frozenset(("*.robot", "*.resource"))
+DEFAULT_EXCLUDE = frozenset((".direnv", ".eggs", ".git", ".svn", ".hg", ".nox", ".tox", ".venv", "venv", "dist"))
 
-class ParseDelimitedArgAction(argparse.Action):  # pylint: disable=too-few-public-methods
-    def __call__(self, parser, namespace, values, option_string=None):
-        container = getattr(namespace, self.dest)
-        config_values = values.split(",")
-        if isinstance(container, list):
-            container.extend(config_values)
-        else:
-            container.update(values.split(","))
+DEFAULT_ISSUE_FORMAT = "{source}:{line}:{col} [{severity}] {rule_id} {desc} ({name})"
 
+if TYPE_CHECKING:
+    import re
+    from collections.abc import Generator
 
-class ParseCheckerConfig(argparse.Action):  # pylint: disable=too-few-public-methods
-    def __call__(self, parser, namespace, values, option_string=None):
-        container = getattr(namespace, self.dest)
-        container.append(values.strip())
-
-
-class ParseFileTypes(argparse.Action):  # pylint: disable=too-few-public-methods
-    def __call__(self, parser, namespace, values, option_string=None):
-        filetypes = getattr(namespace, self.dest)
-        for filetype in values.split(","):
-            filetypes.add(filetype if filetype.startswith(".") else "." + filetype)
-        setattr(namespace, self.dest, filetypes)
+    from robocop.linter.rules import Rule
 
 
-class SetRuleThreshold(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        setattr(namespace, self.dest, RuleSeverity.parser(values, rule_severity=False))
+class RuleMatcher:
+    def __init__(self, config: LinterConfig):
+        self.config = config
+
+    def is_rule_enabled(self, rule: Rule) -> bool:
+        if self.is_rule_disabled(rule):
+            return False
+        if "ALL" in self.config.include_rules:
+            return True
+        if (
+            self.config.include_rules or self.config.include_rules_patterns
+        ):  # if any include pattern, it must match with something
+            if rule.rule_id in self.config.include_rules or rule.name in self.config.include_rules:
+                return True
+            return any(
+                pattern.match(rule.rule_id) or pattern.match(rule.name)
+                for pattern in self.config.include_rules_patterns
+            )
+        return rule.enabled
+
+    def is_rule_disabled(self, rule: Rule) -> bool:
+        if rule.is_disabled(self.config.target_version):
+            return True
+        if rule.severity < self.config.threshold and not rule.config.get("severity_threshold"):
+            return True
+        if rule.rule_id in self.config.exclude_rules or rule.name in self.config.exclude_rules:
+            return True
+        return any(
+            pattern.match(rule.rule_id) or pattern.match(rule.name) for pattern in self.config.exclude_rules_patterns
+        )
 
 
-class SetListOption(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        pattern = values if values else "*"
-        if "*" in pattern:
-            pattern = translate_pattern(pattern)
-        setattr(namespace, self.dest, pattern)
+@dataclass
+class ConfigContainer:
+    def overwrite(self, other: Self) -> None:
+        """
+        Overwrite options loaded from configuration or default options with config from cli.
+
+        If other has value set to None, it was never set and can be ignored.
+        """
+        if not other:
+            return
+        for config_field in fields(other):
+            value = getattr(other, config_field.name)
+            if value is not None:
+                setattr(self, config_field.name, value)
 
 
-class CustomArgParser(argparse.ArgumentParser):
-    def __init__(self, *args, from_cli=False, **kwargs):
-        self.from_cli = from_cli
-        super().__init__(*args, **kwargs)
+@dataclass
+class WhitespaceConfig(ConfigContainer):
+    space_count: int | str | None = 4
+    indent: int | str | None = None
+    continuation_indent: int | str | None = None
+    line_ending: str | None = "native"
+    separator: str | None = "space"
+    line_length: int | None = 120
 
-    def error(self, message):
-        if self.from_cli:
-            super().error(message)
-        else:
-            raise InvalidArgumentError(message)
+    @classmethod
+    def from_toml(cls, config: dict) -> WhitespaceConfig:
+        config_fields = {config_field.name for config_field in fields(cls)}
+        override = {param: value for param, value in config.items() if param in config_fields}
+        return cls(**override)
+
+    def process_config(self):
+        """Prepare config with processed values. If value is missing, use related config as a default."""
+        if self.indent is None:
+            self.indent = self.space_count
+        if self.continuation_indent is None:
+            self.continuation_indent = self.space_count
+        if self.separator == "space":
+            self.separator = " " * self.space_count
+            self.indent = " " * self.indent
+            self.continuation_indent = " " * self.continuation_indent
+        elif self.separator == "tab":
+            self.separator = "\t"
+            self.indent = "\t"
+            self.continuation_indent = "\t"
+        if self.line_ending == "native":
+            self.line_ending = os.linesep
+        elif self.line_ending == "windows":
+            self.line_ending = "\r\n"
+        elif self.line_ending == "unix":
+            self.line_ending = "\n"
 
 
-def validate_regex(pattern: str) -> Pattern:
-    try:
-        return re.compile(pattern) if pattern is not None else None
-    except re.error:
-        raise ConfigGeneralError(f"Provided regex pattern {pattern} failed to be compiled")
+def parse_rule_severity(value: str):
+    return RuleSeverity.parser(value, rule_severity=False)
 
 
-def resolve_relative_path(orig_path, config_dir: Path, ensure_exists: bool):
+class TargetVersion(Enum):
+    RF4 = "4"
+    RF5 = "5"
+    RF6 = "6"
+    RF7 = "7"
+
+
+def validate_target_version(value: str | TargetVersion | None) -> int | None:
+    if value is None:
+        return misc.ROBOT_VERSION.major
+    if isinstance(value, TargetVersion):
+        target_version = int(value.value)
+    else:
+        try:
+            target_version = int(TargetVersion[f"RF{value}"].value)
+        except KeyError:
+            versions = ", ".join(ver.value for ver in TargetVersion)
+            raise typer.BadParameter(
+                f"Invalid target Robot Framework version: '{value}' is not one of {versions}"
+            ) from None
+    if target_version > misc.ROBOT_VERSION.major:
+        raise typer.BadParameter(
+            f"Target Robot Framework version ({target_version}) should not be higher than "
+            f"installed version ({misc.ROBOT_VERSION})."
+        ) from None
+    return target_version
+
+
+def resolve_relative_path(orig_path: str, config_dir: Path, ensure_exists: bool) -> str:
+    """
+    Resolve a given path relative to a configuration directory.
+
+    If the path is absolute, it is returned as-is. If the path is relative, it is resolved
+    relative to `config_dir`. Optionally, the method can ensure the resolved path exists
+    before returning it.
+    """
     path = Path(orig_path)
     if path.is_absolute():
         return orig_path
@@ -92,519 +174,689 @@ def resolve_relative_path(orig_path, config_dir: Path, ensure_exists: bool):
     return orig_path
 
 
-class ArgumentFileParser:
-    ARGUMENT_FILE_OPTIONS = {"-A", "--argumentfile"}
-    RESOLVE_PATHS_OPTIONS = {"-o", "--output", "-rules", "--ext-rules"}
-    ENSURE_EXIST_PATHS_OPTIONS = {"-rules", "--ext-rules"}
+@dataclass
+class LinterConfig:
+    configure: list[str] | None = field(default_factory=list)
+    select: list[str] | None = field(default_factory=list)
+    ignore: list[str] | None = field(default_factory=list)
+    issue_format: str | None = DEFAULT_ISSUE_FORMAT
+    target_version: Version | None = field(default=None, compare=False)
+    threshold: RuleSeverity | None = RuleSeverity.INFO
+    custom_rules: list[str] | None = field(default_factory=list)
+    include_rules: set[str] | None = field(default_factory=set, compare=False)
+    exclude_rules: set[str] | None = field(default_factory=set, compare=False)
+    include_rules_patterns: set[re.Pattern] | None = field(default_factory=set, compare=False)
+    exclude_rules_patterns: set[re.Pattern] | None = field(default_factory=set, compare=False)
+    reports: list[str] | None = field(default_factory=list)
+    persistent: bool | None = False
+    compare: bool | None = False
+    exit_zero: bool | None = False
+    return_result: bool = False
+    config_source: str = field(default="cli", compare=False)
+    _checkers: list[BaseChecker] | None = field(default=None, compare=False)
+    _project_checkers: list[BaseChecker] | None = field(default=None, compare=False)
+    _rules: dict[str, Rule] | None = field(default=None, compare=False)
 
-    def __init__(self):
-        self.loaded_argument_files = set()
-        self.config_from = ""
+    def __post_init__(self):
+        if not self.target_version:
+            self.target_version = ROBOT_VERSION
 
-    def expand_argument_files(self, args, config_dir=None):
+    @property
+    def checkers(self) -> list[BaseChecker]:
+        if self._checkers is None:
+            self.load_configuration()
+        return self._checkers
+
+    @property
+    def project_checkers(self) -> list[ProjectChecker]:
+        if self._project_checkers is None:
+            self._project_checkers = [
+                checker for checker in self.checkers if not checker.disabled and isinstance(checker, ProjectChecker)
+            ]
+        return self._project_checkers
+
+    @property
+    def rules(self):
+        if self._rules is None:
+            self.load_configuration()
+        return self._rules
+
+    def load_configuration(self):
+        """Load rules, checkers and their configuration."""
+        self.split_inclusions_exclusions_into_patterns()
+        self.load_checkers()
+        self.configure_rules()
+        self.check_for_disabled_rules()
+        self.validate_any_rule_enabled()
+
+    def load_checkers(self) -> None:
         """
-        Find argument files in the argument list and expand argument list with their content.
+        Initialize checkers and rules containers and start rules discovery.
+
+        Instance of this class is passed over since it will be used to populate checkers/rules containers.
+        Additionally, rules can also refer to instance of this class to access config class.
         """
-        if not any(arg in self.ARGUMENT_FILE_OPTIONS for arg in args):
-            return list(args)
-        parsed_args = []
-        while args:
-            arg = args.pop(0)
-            if arg not in self.ARGUMENT_FILE_OPTIONS:
-                parsed_args.append(arg)
-                continue
-            if not args:  # argumentfile option declared but filename was not provided
-                raise ArgumentFileNotFoundError("") from None
-            argfile = args.pop(0)
-            argfile_path = Path(argfile)
-            if argfile_path.is_file():
-                loaded_config_dir = argfile_path.parent
-            else:
-                loaded_config_dir = None
-            file_args = self.load_argument_file(argfile, config_dir)
-            file_args = self.resolve_arguments_paths(file_args, config_dir)
-            parsed_args += self.expand_argument_files(file_args, loaded_config_dir)
-        return parsed_args
+        self._checkers = []
+        self._rules = {}
+        rules.init(self)
 
-    def resolve_arguments_paths(self, args, root_dir):
-        if root_dir is None:
-            return args
-        prev_option_like = False
-        prev_arg = "option"
-        resolved = []
-        for arg in args:
-            option_like = arg.startswith("-")
-            # resolve path if previous arg was an option that can be path, or the arg is a source
-            if (prev_option_like and prev_arg in self.RESOLVE_PATHS_OPTIONS) or (  # option value that can be path
-                not prev_option_like and not option_like  # source
-            ):
-                ensure_exists = prev_arg in self.ENSURE_EXIST_PATHS_OPTIONS
-                # TODO: If the --rules is provided as comma separated list, it will not resolve paths
-                arg = resolve_relative_path(arg, root_dir, ensure_exists)
-            resolved.append(arg)
-            prev_option_like = option_like
-            prev_arg = arg
-        return resolved
+    def register_checker(self, checker: type[BaseChecker]) -> None:  # [type[BaseChecker]]
+        for rule_name_or_id, rule in checker.rules.items():
+            self._rules[rule_name_or_id] = rule
+        self._checkers.append(checker)
 
-    def load_argument_file(self, argfile, config_dir):
-        if config_dir is not None:
-            argfile = resolve_relative_path(argfile, config_dir, True)
-        if argfile in self.loaded_argument_files:
-            raise CircularArgumentFileError(argfile) from None
-        else:
-            self.loaded_argument_files.add(argfile)
-        try:
-            with FileReader(argfile) as arg_f:
-                args = []
-                for line in arg_f.readlines():
-                    if line.strip().startswith("#"):
-                        continue
-                    for arg in line.split(" ", 1):
-                        arg = arg.strip()
-                        if arg:
-                            args.append(arg)
-                if args and not self.config_from:
-                    self.config_from = argfile
-                return args
-        except FileNotFoundError:
-            raise ArgumentFileNotFoundError(argfile) from None
-
-
-class Config:
-    def __init__(self, root=None, from_cli: bool = False):
-        self.from_cli = from_cli
-        self.exec_dir = os.path.abspath(".")
-        self.include = set()
-        self.exclude = set()
-        self.ignore = set()
-        self.ignore_default = re.compile(DEFAULT_EXCLUDES)
-        self.reports = ["return_status"]
-        self.threshold = RuleSeverity("I")
-        self.configure = []
-        self.format = "{source}:{line}:{col} [{severity}] {rule_id} {desc} ({name})"
-        self.paths = ["."]
-        self.ext_rules = set()
-        self.include_patterns = []
-        self.exclude_patterns = []
-        self.filetypes = {".robot", ".resource", ".tsv"}
-        self.language = []
-        self.list = ""
-        self.list_configurables = ""
-        self.list_reports = False
-        self.output = None
-        self.recursive = True
-        self.verbose = False
-        self.config_from = ""
-        self.root = find_project_root(root, ["."])
-        self.parse()
-
-    def remove_severity(self):
-        self.include = {self.replace_severity_values(rule) for rule in self.include}
-        self.exclude = {self.replace_severity_values(rule) for rule in self.exclude}
-        for index, conf in enumerate(self.configure):
-            if conf.count(":") != 2:
-                continue
-            message, param, value = conf.split(":")
-            message = self.replace_severity_values(message)
-            self.configure[index] = f"{message}:{param}:{value}"
+    def check_for_disabled_rules(self) -> None:
+        """Check checker configuration to disable rules."""
+        rule_matcher = RuleMatcher(self)
+        for checker in self._checkers:
+            if not self.any_rule_enabled(checker, rule_matcher):
+                checker.disabled = True
 
     @staticmethod
-    def filter_patterns_from_names(only_names, only_patterns):
-        filtered = set()
-        for rule in only_names:
-            if "*" in rule:
-                only_patterns.append(translate_pattern(rule))
-            else:
-                filtered.add(rule)
-        return filtered
+    def any_rule_enabled(checker: type[BaseChecker], rule_matcher: RuleMatcher) -> bool:
+        any_enabled = False
+        for rule in checker.rules.values():
+            rule.enabled = rule_matcher.is_rule_enabled(rule)
+            if rule.enabled:
+                any_enabled = True
+        return any_enabled
 
-    def translate_patterns(self):
-        self.include = self.filter_patterns_from_names(self.include, self.include_patterns)
-        self.exclude = self.filter_patterns_from_names(self.exclude, self.exclude_patterns)
+    def validate_any_rule_enabled(self) -> None:
+        """Validate and print warning if no rule is selected."""
+        if not any(not checker.disabled for checker in self._checkers):
+            print(
+                f"No rule selected with the existing configuration from the {self.config_source} . "
+                f"Please check if all rules from --select exist and there is no conflicting filter option."
+            )
 
-    def _create_parser(self):
-        parser = CustomArgParser(
-            prog="robocop",
-            formatter_class=argparse.RawTextHelpFormatter,
-            description="Static code analysis tool for Robot Framework",
-            epilog="For full documentation visit: https://robocop.readthedocs.io/en/latest/",
-            add_help=False,
-            from_cli=self.from_cli,
-        )
-        required = parser.add_argument_group(title="Required parameters")
-        optional = parser.add_argument_group(title="Optional parameters")
+    def configure_rules(self) -> None:
+        """
+        Iterate over configuration for rules and reports and apply it.
 
-        required.add_argument(
-            "paths",
-            metavar="paths",
-            type=str,
-            nargs="*",
-            default=self.paths,
-            help="List of paths (files or directories) to be parsed by Robocop.",
-        )
-        optional.add_argument(
-            "-i",
-            "--include",
-            action=ParseDelimitedArgAction,
-            default=self.include,
-            metavar="RULES",
-            help="Run Robocop only with specified rules. You can define rule by its name or id.\n"
-            "Glob patterns are supported.",
-        )
-        optional.add_argument(
-            "-e",
-            "--exclude",
-            action=ParseDelimitedArgAction,
-            default=self.exclude,
-            metavar="RULES",
-            help="Ignore specified rules. You can define rule by its name or id.\nGlob patterns are supported.",
-        )
-        optional.add_argument(
-            "-rules",
-            "--ext-rules",
-            action=ParseDelimitedArgAction,
-            default=self.ext_rules,
-            help="List of paths with custom rules.",
-        )
-        optional.add_argument(
-            "-nr",
-            "--no-recursive",
-            dest="recursive",
-            action="store_false",
-            default=self.recursive,
-            help="Use this flag to stop scanning directories recursively.",
-        )
-        optional.add_argument(
-            "-r",
-            "--reports",
-            action=ParseDelimitedArgAction,
-            default=self.reports,
-            help="Generate reports after scan.\n"
-            "You can enable reports by listing them in comma-separated list:\n"
-            "--reports rules_by_id,rules_by_error_type,scan_timer\n"
-            "To enable all reports use all:\n"
-            "--reports all",
-        )
-        optional.add_argument(
-            "-f",
-            "--format",
-            type=str,
-            default=self.format,
-            help="Format of output message. "
-            "You can use placeholders to change the way an issue is reported.\n"
-            "Default: {source}:{line}:{col} [{severity}] {rule_id} {desc} ({name})",
-        )
-        optional.add_argument(
-            "-c",
-            "--configure",
-            action=ParseCheckerConfig,
-            default=self.configure,
-            metavar="CONFIGURABLE",
-            help="Configure checker or report with parameter value. Usage:\n"
-            "-c message_name_or_id:param_name:param_value\n"
-            "Examples:\n"
-            "-c line-too-long:line_length:150\n"
-            "--configure 0101:severity:E",
-        )
-        optional.add_argument(
-            "-l",
-            "--list",
-            action=SetListOption,
-            nargs="?",
-            const="",
-            default=self.list,
-            metavar="PATTERN",
-            help="List all available rules. You can use optional PATTERN argument to match rule names "
-            "(for example --list *doc*). "
-            "PATTERN can be also ENABLED/DISABLED keyword to list only enabled/disabled rules.",
-        )
-        optional.add_argument(
-            "-lc",
-            "--list-configurables",
-            action=SetListOption,
-            nargs="?",
-            const="",
-            default=self.list_configurables,
-            metavar="PATTERN",
-            help="List all available rules with configurable parameters. You can use optional PATTERN argument "
-            "to match rule names (for example --list *doc*). "
-            "PATTERN can be also ENABLED/DISABLED keyword to list only enabled/disabled rules.",
-        )
-        optional.add_argument(
-            "-lr",
-            "--list-reports",
-            action="store_true",
-            default=self.list_reports,
-            help="List all available reports.",
-        )
-        optional.add_argument(
-            "-o",
-            "--output",
-            type=argparse.FileType("w"),
-            default=self.output,
-            metavar="PATH",
-            help="Path to output file.",
-        )
-        optional.add_argument(
-            "-ft",
-            "--filetypes",
-            action=ParseFileTypes,
-            default=self.filetypes,
-            help="Comma-separated list of file extensions to be scanned by Robocop",
-        )
-        optional.add_argument(
-            "-t",
-            "--threshold",
-            action=SetRuleThreshold,
-            default=self.threshold,
-            help=f"Disable rules below given threshold. Available message levels: "
-            f'{" < ".join(sev.value for sev in RuleSeverity)}',
-        )
-        optional.add_argument("-A", "--argumentfile", metavar="PATH", help="Path to file with arguments.")
-        optional.add_argument(
-            "-g",
-            "--ignore",
-            action=ParseDelimitedArgAction,
-            default=self.ignore,
-            metavar="PATH",
-            help="Ignore file(s) and path(s) provided. Glob patterns are supported.",
-        )
-        optional.add_argument(
-            "-gd",
-            "--ignore-default",
-            type=validate_regex,
-            default=self.ignore_default,
-            metavar="PATTERN",
-            help=f"Paths ignored by default. "
-            f"A regular expression to exclude directories on file search.\n"
-            f"An empty value means no path is excluded. Default: {DEFAULT_EXCLUDES}",
-        )
-        optional.add_argument(
-            "--language",
-            "--lang",
-            action=ParseDelimitedArgAction,
-            default=self.language,
-            help="Parse Robot Framework files using additional languages.",
-        )
-        optional.add_argument("-h", "--help", action="help", help="Print this help message and exit.")
-        optional.add_argument(
-            "-v",
-            "--version",
-            action="version",
-            version=__version__,
-            help="Display Robocop version.",
-        )
-        optional.add_argument(
-            "-vv",
-            "--verbose",
-            action="store_true",
-            default=self.verbose,
-            help="Display extra information during execution.",
-        )
-        optional.add_argument(
-            "--directives",
-            action="version",
-            version="1. Serve the public trust\n2. Protect the innocent\n3. Uphold the law\n4. [ACCESS DENIED]",
-            help=argparse.SUPPRESS,
-        )
-
-        return parser
-
-    def parse(self):
-        if not self.from_cli:
-            self.load_default_config_file()
-            return
-        args = sys.argv[1:]
-        if not self.argument_file_in_cli(args):
-            self.load_default_config_file()
-        self.parse_args(args)
-
-    def argument_file_in_cli(self, args):
-        argument_options = {"-A", "--argumentfile"}
-        for arg in args:
-            if arg in argument_options:
-                return True
-        return False
-
-    def reload(self, rules):
-        self.remove_severity()
-        self.translate_patterns()
-        self.print_config_source()
-        self.validate_rule_names(rules)
-        self.check_deprecations(rules)
-
-    def print_config_source(self):
-        # We can only print after reading all configs, since self.verbose is unknown before we read it from config
-        if not self.verbose:
-            return
-        if self.config_from:
-            print(f"Loaded configuration from {self.config_from}")
-        else:
-            print("No config file found or configuration is empty. Using default configuration")
-
-    def load_default_config_file(self):
-        if not self.load_robocop_file():
-            self.load_pyproject_file()
-
-    def load_robocop_file(self):
-        """Returns True if .robocop exists"""
-        robocop_path = find_file_in_project_root(".robocop", self.root)
-        if not robocop_path.is_file():
-            return False
-        argument_files_parser = ArgumentFileParser()
-        args = argument_files_parser.load_argument_file(robocop_path, robocop_path.parent)
-        self.config_from = argument_files_parser.config_from
-        self.parse_args(args)
-        return True
-
-    def load_pyproject_file(self):
-        pyproject_path = find_file_in_project_root("pyproject.toml", self.root)
-        if not pyproject_path.is_file():
-            return
-        config_dir = pyproject_path.parent
-        try:
-            with Path(pyproject_path).open("rb") as fp:
-                config = tomli.load(fp)
-        except tomli.TOMLDecodeError as err:
-            raise InvalidArgumentError(f"Failed to decode {str(pyproject_path)}: {err}") from None
-        config = config.get("tool", {}).get("robocop", {})
-        if self.parse_toml_to_config(config, config_dir):
-            self.config_from = pyproject_path
-
-    def parse_args_to_config(self, args):
-        parser = self._create_parser()
-        args = parser.parse_args(args)
-        for key, value in dict(**vars(args)).items():
-            if key in self.__dict__:
-                self.__dict__[key] = value
-
-    def parse_args(self, args):
-        argument_files_parser = ArgumentFileParser()
-        args = argument_files_parser.expand_argument_files(args)
-        if argument_files_parser.config_from:
-            self.config_from = argument_files_parser.config_from
-        self.parse_args_to_config(args)
-
-    @staticmethod
-    def replace_in_set(container: Set, old_key: str, new_key: str):
-        if old_key not in container:
-            return
-        container.remove(old_key)
-        container.add(new_key)
-
-    def validate_rule_names(self, rules):
-        for rule in chain(self.include, self.exclude):
-            if rule not in rules:
-                similar = RecommendationFinder().find_similar(rule, rules)
-                raise ConfigGeneralError(f"Provided rule '{rule}' does not exist. {similar}")
-
-    def check_deprecations(self, rules):
-        renamed = {
-            # "old-name": "new-name"
-        }
-        deprecated = {
-            # "rule-name": "deprecation message"
-            "bad-indent": "'strict' and 'ignore_uneven' parameters are no longer available for this rule. Take a look at new E1017 bad-block-indent rule that replaces them."  # warning added in v.3.0.0
-        }
-        deprecation_header = "### DEPRECATION WARNING ###"
-        deprecation_footer = "This information will disappear in the next version.\n\n"
-        # get all rules mentioned in include and exclude CLI options
-        mentioned_rules = self.include.union(self.exclude)
-        # add the rules mentioned in configure CLI option
-        mentioned_rules.update(configured.split(":", 1)[0] for configured in self.configure)
-        for rule in mentioned_rules:
-            if rule not in rules:  # reports can also be configured, but we only want rules here
-                continue
-            rule_name = rules[rule].name
-            if rule_name in renamed:  # update warning description to specific case
-                print(
-                    f"{deprecation_header}\n"
-                    f"Rule '{rule_name}' is renamed to '{renamed[rule_name]}'.\n"
-                    f"Update your configuration if you're using the old name. "
-                    f"{deprecation_footer}"
-                )
-                self.replace_in_set(self.include, rule_name, renamed[rule_name])
-                self.replace_in_set(self.exclude, rule_name, renamed[rule_name])
-            if rule_name in deprecated:
-                print(
-                    f"{deprecation_header}\n"
-                    f"Rule '{rule_name}' is deprecated - {deprecated[rule_name]}\n"
-                    f"{deprecation_footer}"
-                )
-
-    def is_rule_enabled(self, rule):
-        if self.is_rule_disabled(rule):
-            return False
-        if self.include or self.include_patterns:  # if any include pattern, it must match with something
-            if rule.rule_id in self.include or rule.name in self.include:
-                return True
-            for pattern in self.include_patterns:
-                if pattern.match(rule.rule_id) or pattern.match(rule.name):
-                    return True
-            return False
-        return True
-
-    def is_rule_disabled(self, rule):
-        if not rule.enabled_in_version:
-            return True
-        if rule.severity < self.threshold:
-            return True
-        if rule.rule_id in self.exclude or rule.name in self.exclude:
-            return True
-        for pattern in self.exclude_patterns:
-            if pattern.match(rule.rule_id) or pattern.match(rule.name):
-                return True
-        return False
-
-    def is_path_ignored(self, path):
-        for pattern in self.ignore:
-            if path.match(pattern):
-                return True
-        if self.ignore_default:
-            match = self.ignore_default.search(str(path))
-            return bool(match and match.group(0))
-        return False
-
-    @staticmethod
-    def replace_severity_values(rule_name: str):
-        sev = "".join(sev.value for sev in RuleSeverity)
-        if re.match(f"[{sev}][0-9]{{4,}}", rule_name):
-            for char in sev:
-                rule_name = rule_name.replace(char, "")
-        return rule_name
-
-    def parse_toml_to_config(self, toml_data: Dict, config_dir: Path):
-        if not toml_data:
-            return False
-        resolve_relative = {"paths", "ext_rules", "output"}
-        assign_type = {"paths", "format"}
-        set_type = {"include", "exclude", "ignore", "ext_rules"}
-        append_type = {"configure", "reports", "language"}
-        toml_data = {key.replace("-", "_"): value for key, value in toml_data.items()}
-        for key, value in toml_data.items():
-            if key in resolve_relative:
-                if isinstance(value, list):
-                    for index, val in enumerate(value):
-                        value[index] = resolve_relative_path(val, config_dir, ensure_exists=key == "ext_rules")
+        Accepted format is rule_name.param=value or report_name.param=value . ``rule_id`` can be used instead of
+        ``rule_name``.
+        """
+        for config in self.configure:
+            try:
+                name, param_and_value = config.split(".", maxsplit=1)
+                param, value = param_and_value.split("=", maxsplit=1)
+            except ValueError:
+                raise errors.InvalidConfigurationFormatError(config) from None
+            if name in self._rules:
+                rule = self._rules[name]
+                if rule.deprecated:
+                    print(rule.deprecation_warning)
                 else:
-                    value = resolve_relative_path(value, config_dir, ensure_exists=key == "ext_rules")
-            if key in assign_type:
-                self.__dict__[key] = value
-            elif key in set_type:
-                self.__dict__[key].update(set(value))
-            elif key in append_type:
-                self.__dict__[key] += value
-            elif key == "filetypes":
-                for filetype in toml_data["filetypes"]:
-                    self.filetypes.add(filetype if filetype.startswith(".") else "." + filetype)
-            elif key == "threshold":
-                self.threshold = RuleSeverity(value)
-            elif key == "output":
-                self.output = open(value, "w")
-            elif key == "no_recursive":
-                self.recursive = not value
-            elif key == "verbose":
-                self.verbose = value
-            else:
-                raise InvalidArgumentError(f"Option '{key}' is not supported in pyproject.toml configuration file.")
-        return True
+                    rule.configure(param, value)
+            # else:  TODO
+            #     raise errors.RuleOrReportDoesNotExist(name, self._rules)
+
+    def split_inclusions_exclusions_into_patterns(self):
+        if self.select:
+            for rule in self.select:
+                if "*" in rule:
+                    self.include_rules_patterns.add(compile_rule_pattern(rule))
+                else:
+                    self.include_rules.add(rule)
+        if self.ignore:
+            for rule in self.ignore:
+                if "*" in rule:
+                    self.exclude_rules_patterns.add(compile_rule_pattern(rule))
+                else:
+                    self.exclude_rules.add(rule)
+
+    #     def validate_rules_exists_and_not_deprecated(self, rules: dict[str, "Rule"]):
+    #         for rule in chain(self.include, self.exclude):
+    #             if rule not in rules:
+    #                 raise errors.RuleDoesNotExist(rule, rules) from None
+    #             rule_def = rules[rule]
+    #             if rule_def.deprecated:
+    #                 print(rule_def.deprecation_warning)
+
+    @classmethod
+    def from_toml(cls, config: dict, config_path: Path) -> LinterConfig:
+        config_fields = {config_field.name for config_field in fields(cls) if config_field.compare}
+        # TODO assert type (list vs list etc)
+        if unknown_fields := {param: value for param, value in config.items() if param not in config_fields}:
+            print(f"Unknown fields in the [tool.robocop.lint] section: {unknown_fields}")
+            raise typer.Exit(code=1)
+        override = {param: value for param, value in config.items() if param in config_fields}
+        if "threshold" in config:
+            override["threshold"] = parse_rule_severity(config["threshold"])
+        if "custom_rules" in config:
+            override["custom_rules"] = [
+                resolve_relative_path(path, config_path.parent, ensure_exists=True) for path in config["custom_rules"]
+            ]
+        override["config_source"] = str(config_path)
+        return cls(**override)
+
+
+@dataclass
+class FormatterConfig:
+    whitespace_config: WhitespaceConfig = field(default_factory=WhitespaceConfig)
+    select: list[str] | None = field(default_factory=list)
+    custom_formatters: list[str] | None = field(default_factory=list)
+    configure: list[str] | None = field(default_factory=list)
+    force_order: bool | None = False
+    allow_disabled: bool | None = False
+    target_version: int | str | None = field(default=misc.ROBOT_VERSION.major, compare=False)
+    skip_config: SkipConfig = field(default_factory=SkipConfig)
+    overwrite: bool | None = True
+    diff: bool | None = False
+    output: Path | None = None  # TODO
+    color: bool | None = True
+    check: bool | None = False
+    reruns: int | None = 0
+    start_line: int | None = None
+    end_line: int | None = None
+    languages: Languages | None = field(default=None, compare=False)
+    _parameters: dict[str, dict[str, str]] | None = field(default=None, compare=False)
+    _formatters: dict[str, ...] | None = field(default=None, compare=False)
+
+    @classmethod
+    def from_toml(cls, config: dict, config_parent: Path) -> FormatterConfig:
+        config_fields = {config_field.name for config_field in fields(cls) if config_field.compare}
+        # TODO assert type (list vs list etc)
+        override = {param: value for param, value in config.items() if param in config_fields}
+        override["whitespace_config"] = WhitespaceConfig.from_toml(config)
+        override["skip_config"] = SkipConfig.from_toml(config)
+        if "custom_formatters" in override:
+            override["custom_formatters"] = [
+                resolve_relative_path(path, config_parent, ensure_exists=True) for path in config["custom_formatters"]
+            ]
+        known_fields = (
+            config_fields
+            | {config_field.name for config_field in fields(WhitespaceConfig)}
+            | {
+                f"skip_{config_field.name}" if not config_field.name.startswith("skip") else config_field.name
+                for config_field in fields(SkipConfig)
+            }
+        )
+        if unknown_fields := {param: value for param, value in config.items() if param not in known_fields}:
+            print(f"Unknown fields in the [robocop.format] section: {unknown_fields}")
+            raise typer.Exit(code=1)
+        return cls(**override)
+
+    @property
+    def formatters(self) -> dict[str, ...]:
+        if self._formatters is None:
+            self.whitespace_config.process_config()
+            self.load_formatters()
+        return self._formatters
+
+    def load_formatters(self):
+        self._formatters = {}
+        for formatter in self.selected_formatters():
+            for container in formatters.import_formatter(formatter, self.combined_configure, self.skip_config):
+                if container.name in self.select or formatter in self.select:
+                    enabled = True
+                elif "enabled" in container.args:
+                    enabled = container.args["enabled"].lower() == "true"
+                else:
+                    enabled = getattr(container.instance, "ENABLED", True)
+                if not (enabled or self.allow_disabled):
+                    continue
+                if formatters.can_run_in_robot_version(
+                    container.instance,
+                    overwritten=container.name in self.select,
+                    target_version=self.target_version,
+                ):
+                    container.instance.ENABLED = enabled
+                    self._formatters[container.name] = container.instance
+                elif self.allow_disabled:
+                    container.instance.ENABLED = False
+                    self._formatters[container.name] = container.instance
+                container.instance.formatting_config = self.whitespace_config
+                container.instance.formatters = self.formatters
+                container.instance.languages = self.languages
+
+    def selected_formatters(self) -> list[str]:
+        if not self.select:
+            return formatters.FORMATTERS + self.custom_formatters
+        if not self.force_order:
+            return self.ordered_select + self.custom_formatters
+        return self.select + self.custom_formatters
+
+    @property
+    def ordered_select(self) -> list[str]:
+        """
+        Order formatter names from --select using default formatters list.
+
+        Custom formatters are put last.
+        """
+        selected = [formatter for formatter in formatters.FORMATTERS if formatter in self.select]
+        selected.extend([formatter for formatter in self.select if formatter not in selected])
+        return selected
+
+    def _parse_configure(self, configure: str) -> tuple[str, str, str]:
+        try:
+            name, param_value = configure.split(".", maxsplit=1)
+            param, value = param_value.split("=", maxsplit=1)
+            name, param, value = name.strip(), param.strip(), value.strip()
+        except ValueError:
+            raise errors.InvalidConfigurationFormatError(configure) from None
+        return name, param, value
+
+    @property
+    def combined_configure(self) -> dict[str, dict[str, str]]:
+        """
+        Aggregate configure for formatters and their parameters.
+
+        For example:
+
+            robocop format -c MyFormatter.param=value -c MyFormatter2.param=value -c MyFormatter.param=value
+
+        will return:
+
+            {"MyFormatter": {"param": "value", "param2": "value"}, "MyFormatter2": {"param": "value"}}
+
+        Returns:
+            Map of formatters and their parameters.
+
+        """
+        if self._parameters is None:
+            self._parameters = {}
+            for config in self.configure:
+                name, param, value = self._parse_configure(config)
+                if name not in self._parameters:
+                    self._parameters[name] = {}
+                self._parameters[name][param] = value
+        return self._parameters
+
+
+@dataclass
+class FileFiltersOptions(ConfigContainer):
+    include: set[str] | None = field(default_factory=set)
+    default_include: set[str] | None = field(default_factory=lambda: DEFAULT_INCLUDE)
+    exclude: set[str] | None = field(default_factory=set)
+    default_exclude: set[str] | None = field(default_factory=lambda: DEFAULT_EXCLUDE)
+    _included_paths: set[str] | None = field(default=None, compare=False)
+    _excluded_paths: set[str] | None = field(default=None, compare=False)
+
+    @property
+    def included_paths(self) -> set[str]:
+        if self._included_paths is None:
+            self._included_paths = set(self.default_include).union(set(self.include))
+        return self._included_paths
+
+    @property
+    def excluded_paths(self) -> set[str]:
+        if self._excluded_paths is None:
+            self._excluded_paths = set(self.default_exclude).union(set(self.exclude))
+        return self._excluded_paths
+
+    @classmethod
+    def from_toml(cls, config: dict) -> FileFiltersOptions:
+        filter_config = {}
+        for key in ("include", "default_include", "exclude", "default_exclude"):
+            if key in config:
+                filter_config[key] = set(config.pop(key))
+        return cls(**filter_config)
+
+    def path_excluded(self, path: Path) -> bool:
+        """Exclude all paths matching exclude patterns."""
+        return any(path.match(pattern) for pattern in self.excluded_paths)
+
+    def path_included(self, path: Path) -> bool:
+        """Only allow paths matching include patterns."""
+        return any(path.match(pattern) for pattern in self.included_paths)
+
+
+def normalize_config_keys(config: dict[str, ...]) -> dict[str, ...]:
+    """Allow to use target_version and target-version alternative names in configuration file."""
+    return {key.replace("-", "_"): value for key, value in config.items()}
+
+
+@dataclass
+class Config:
+    sources: list[str] | None = field(default_factory=lambda: ["."])
+    file_filters: FileFiltersOptions | None = field(default_factory=FileFiltersOptions)
+    linter: LinterConfig | None = field(default_factory=LinterConfig)
+    formatter: FormatterConfig | None = field(default_factory=FormatterConfig)
+    language: list[str] | None = field(default_factory=list)
+    languages: Languages | None = field(default=None, compare=False)
+    verbose: bool | None = field(default_factory=bool)
+    target_version: int | str | None = misc.ROBOT_VERSION.major
+    config_source: str = "cli"
+
+    def __post_init__(self) -> None:
+        self.target_version = validate_target_version(self.target_version)
+        self.load_languages()
+        if self.formatter:
+            self.formatter.target_version = self.target_version
+            self.formatter.languages = self.languages
+        if self.linter:
+            self.linter.target_version = Version(f"{self.target_version}.0")
+
+    def load_languages(self):
+        if Languages is None:
+            return
+        try:
+            self.languages = Languages(self.language)
+        except DataError:
+            languages = ", ".join(self.language)
+            print(
+                f"Failed to load languages: {languages}. "
+                f"Verify if language is one of the supported languages: "
+                f"https://robotframework.org/robotframework/latest/RobotFrameworkUserGuide.html#translations"
+            )
+            raise typer.Exit(code=1) from None
+
+    @classmethod
+    def from_toml(cls, config: dict, config_path: Path) -> Config:
+        """
+        Load configuration from toml dict.
+
+        If there is parent configuration, use it to overwrite loaded configuration.
+        """
+        # TODO: validate all key and types
+        config = normalize_config_keys(config)
+        Config.validate_config(config, config_path)
+        parsed_config = {
+            "config_source": str(config_path),
+            "linter": LinterConfig.from_toml(normalize_config_keys(config.pop("lint", {})), config_path),
+            "file_filters": FileFiltersOptions.from_toml(config),
+            "language": config.pop("language", []),
+            "verbose": config.pop("verbose", False),
+        }
+        if "target_version" in config:
+            parsed_config["target_version"] = validate_target_version(config["target_version"])
+        parsed_config["formatter"] = FormatterConfig.from_toml(
+            normalize_config_keys(config.pop("format", {})), config_path.parent
+        )
+        parsed_config = {key: value for key, value in parsed_config.items() if value is not None}
+        return cls(**parsed_config)
+
+    @staticmethod
+    def validate_config(config: dict, config_path: Path) -> None:
+        old_options = {  # some options were deprecated, but most were moved into subdict (lint)
+            "reports",
+            "filetypesignore",
+            "ignore_default",
+            "threshold",
+            "no_recursive",
+            "persistent",
+            "ext_rules",
+            "configure",
+            "output",
+            "verbose",
+            "paths",
+            "robotidy",
+        }
+        if isinstance(config.get("format", {}), str) or any(key in old_options for key in config):
+            print(
+                f"Configuration file seems to use Robocop < 6.0.0 or Robotidy syntax. "
+                f"Please migrate the config: {config_path}"
+            )
+            raise typer.Exit(code=1)
+        known_keys = {
+            "lint",
+            "format",
+            "language",
+            "verbose",
+            "include",
+            "default_include",
+            "exclude",
+            "default_exclude",
+            "target_version",
+        }
+        for key in config:
+            if key not in known_keys:
+                print(f"Unknown configuration key: '{key}' in {config_path}")
+                raise typer.Exit(code=1)
+
+    def overwrite_from_config(self, overwrite_config: Config | None) -> None:
+        if not overwrite_config:
+            return
+        for config_field in fields(overwrite_config):
+            if config_field.name in (
+                "linter",
+                "formatter",
+                "file_filters",
+                "config_source",
+            ):  # TODO Use field metadata
+                continue
+            value = getattr(overwrite_config, config_field.name)
+            if value:
+                setattr(self, config_field.name, value)
+        if overwrite_config.linter:
+            for config_field in fields(overwrite_config.linter):
+                if config_field.name == "config_source":
+                    continue
+                value = getattr(overwrite_config.linter, config_field.name)
+                if value is not None:
+                    if config_field.name == "reports":  # allows to combine cli and config for reports
+                        self.linter.reports.extend(value)
+                    elif config_field.name == "configure":
+                        self.linter.configure.extend(value)
+                    else:
+                        setattr(self.linter, config_field.name, value)
+                        if config_field.name in {"select", "ignore"}:
+                            self.linter.config_source = "cli"
+        if overwrite_config.formatter:
+            for config_field in fields(overwrite_config.formatter):
+                if config_field.name in ("whitespace_config", "skip_config") or config_field.name.startswith("_"):
+                    continue
+                value = getattr(overwrite_config.formatter, config_field.name)
+                if value is not None:
+                    if config_field.name == "configure":
+                        self.formatter.configure.extend(value)
+                    else:
+                        setattr(self.formatter, config_field.name, value)
+            self.formatter.whitespace_config.overwrite(overwrite_config.formatter.whitespace_config)
+            self.formatter.skip_config.overwrite(overwrite_config.formatter.skip_config)
+            self.formatter.languages = self.languages
+        self.file_filters.overwrite(overwrite_config.file_filters)
+
+    def __str__(self):
+        return str(self.config_source)
+
+
+class GitIgnoreResolver:
+    def __init__(self):
+        self.cached_ignores: dict[Path, pathspec.PathSpec] = {}
+
+    def path_excluded(self, path: Path, gitignores: list[tuple[Path, pathspec.PathSpec]]) -> bool:
+        """Find path gitignores and check if file is excluded."""
+        if not gitignores:
+            return False
+        for gitignore_path, gitignore in gitignores:
+            relative_path = files.get_relative_path(path, gitignore_path)
+            if gitignore.match_file(relative_path):
+                return True
+        return False
+
+    def read_gitignore(self, path: Path) -> pathspec.PathSpec:
+        """Return a PathSpec loaded from the file."""
+        with path.open(encoding="utf-8") as gf:
+            lines = gf.readlines()
+        return pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, lines)
+
+    def resolve_path_ignores(self, path: Path) -> list[tuple[Path, pathspec.PathSpec]]:
+        """
+        Visit all parent directories and find all gitignores.
+
+        Gitignores are cached for multiple sources.
+
+        Args:
+            path: path to file/directory
+
+        Returns:
+            PathSpec from merged gitignores.
+
+        """
+        # TODO: respect nogitignore flag
+        if path.is_file():
+            path = path.parent
+        gitignores = []
+        for parent_path in [path, *path.parents]:
+            if parent_path in self.cached_ignores:
+                gitignores.append(self.cached_ignores[parent_path])
+            elif (gitignore_path := parent_path / ".gitignore").is_file():
+                gitignore = self.read_gitignore(gitignore_path)
+                self.cached_ignores[parent_path] = (parent_path, gitignore)
+                gitignores.append((parent_path, gitignore))
+            if (parent_path / ".git").is_dir():
+                break
+        return gitignores
+
+
+class ConfigManager:
+    """
+    Finds and loads configuration files for each file.
+
+    Config provided from cli takes priority. ``--config`` option overrides any found configuration file.
+    """
+
+    def __init__(
+        self,
+        sources: list[str] | None = None,
+        config: Path | None = None,
+        root: str | None = None,
+        ignore_git_dir: bool = False,
+        ignore_file_config: bool = False,
+        skip_gitignore: bool = False,
+        force_exclude: bool = False,
+        overwrite_config: Config | None = None,
+    ):
+        """
+        Initialize ConfigManager.
+
+        Args:
+            sources: List of sources with Robot Framework files.
+            config: Path to configuration file.
+            root: Root of the project. Can be supplied if it's known beforehand (for example by IDE plugin)
+            Otherwise it will be automatically found.
+            ignore_git_dir: Flag for project root discovery to decide if directories with `.git` should be ignored.
+            ignore_file_config: If set to True, Robocop will not load found configuration files
+            skip_gitignore: Do not load .gitignore files when looking for the files to parse
+            force_exclude: Enforce exclusions, even for paths passed directly in the command-line
+            overwrite_config: Overwrite existing configuration file with the Config class
+
+        """
+        self.cached_configs: dict[Path, Config] = {}
+        self.overwrite_config = overwrite_config
+        self.ignore_git_dir = ignore_git_dir
+        self.ignore_file_config = ignore_file_config
+        self.force_exclude = force_exclude
+        self.skip_gitignore = skip_gitignore
+        self.gitignore_resolver = GitIgnoreResolver()
+        self.overridden_config = (
+            config is not None
+        )  # TODO: what if both cli and --config? should take --config then apply cli
+        self.root = root or Path.cwd()
+        self.sources = sources
+        self.default_config: Config = self.get_default_config(config)
+        self._paths: dict[Path, Config] | None = None
+
+    @property
+    def paths(self) -> Generator[tuple[Path, Config], None, None]:
+        # TODO: what if we provide the same path twice - tests
+        if self._paths is None:
+            self._paths = {}
+            sources = self.sources if self.sources else self.default_config.sources
+            ignore_file_filters = not self.force_exclude and bool(sources)
+            self.resolve_paths(sources, gitignores=None, ignore_file_filters=ignore_file_filters)
+        yield from self._paths.items()
+
+    def get_default_config(self, config_path: Path | None) -> Config:
+        """Get default config either from --config option or from the cli."""
+        if config_path:
+            configuration = files.read_toml_config(config_path)
+            config = Config.from_toml(configuration, config_path.resolve())
+        else:
+            sources = [Path(path).resolve() for path in self.sources] if self.sources else [Path.cwd()]
+            directories = files.get_common_parent_dirs(sources)
+            config = self.find_config_in_dirs(directories, default=None)
+            if not config:
+                config = Config()
+        config.overwrite_from_config(self.overwrite_config)
+        return config
+
+    def is_git_project_root(self, path: Path) -> bool:
+        """Check if current directory contains .git directory and might be a project root."""
+        if self.ignore_git_dir:
+            return False
+        return (path / ".git").is_dir()
+
+    def find_closest_config(self, source: Path, default: Config | None) -> Config:
+        """Look in the directory and its parents for the closest valid configuration file."""
+        return self.find_config_in_dirs(list(source.parents), default)
+
+    def find_config_in_dirs(self, directories: list[Path], default: Config | None) -> Config:
+        seen = []  # if we find config, mark all visited directories with resolved config
+        for check_dir in directories:
+            if check_dir in self.cached_configs:
+                return self.cached_configs[check_dir]
+            seen.append(check_dir.resolve())
+            for config_filename in CONFIG_NAMES:
+                if (config_path := (check_dir / config_filename)).is_file():
+                    configuration = files.read_toml_config(config_path)
+                    if configuration is not None:
+                        config = Config.from_toml(configuration, config_path)
+                        config.overwrite_from_config(self.overwrite_config)  # TODO those two lines together
+                        self.cached_configs.update({sub_dir: config for sub_dir in seen})
+                        if config.verbose:
+                            print(f"Loaded {config_path} configuration file.")
+                        return config
+            if self.is_git_project_root(check_dir):
+                break
+        return default
+
+    def get_config_for_source_file(self, source_file: Path) -> Config:
+        """
+        Find the closest config to the source file or directory.
+
+        If it was loaded before it will be returned from the cache. Otherwise, we will load it and save it to cache
+        first.
+
+        Args:
+            source_file: Path to Robot Framework source file or directory.
+
+        """
+        if self.overridden_config or self.ignore_file_config:
+            return self.default_config
+        return self.find_closest_config(source_file, self.default_config)
+
+    def resolve_paths(
+        self,
+        sources: list[str | Path],
+        gitignores: list[tuple[Path, pathspec.PathSpec]] | None,
+        ignore_file_filters: bool = False,
+    ) -> None:
+        """
+        Find all files to parse and their corresponding configs.
+
+        Initially sources can be ["."] (if not path provided, assume current working directory).
+        It can be also any list of paths, for example ["tests/", "file.robot"].
+
+        Args:
+            sources: list of sources from CLI or configuration file.
+            gitignores: list of gitignore pathspec and their locations for path resolution.
+            ignore_file_filters: force robocop to parse file even if it's excluded in the configuration
+
+        """
+        for source in sources:
+            source_not_resolved = Path(source)
+            source = source_not_resolved.resolve()
+            if source in self._paths:
+                continue
+            if not source.exists():  # TODO only for passed sources
+                raise errors.FatalError(f"File '{source}' does not exist")
+            config = self.get_config_for_source_file(source)
+            if not ignore_file_filters:
+                if config.file_filters.path_excluded(source_not_resolved):
+                    continue
+                if source.is_file() and not config.file_filters.path_included(source_not_resolved):
+                    continue
+                if not self.skip_gitignore:
+                    if gitignores is None:
+                        source_gitignore = self.gitignore_resolver.resolve_path_ignores(source_not_resolved)
+                    else:
+                        source_gitignore = gitignores
+                    if self.gitignore_resolver.path_excluded(source_not_resolved, source_gitignore):
+                        continue
+            if source.is_dir():
+                self.resolve_paths(source.iterdir(), gitignores)
+            elif source.is_file():
+                self._paths[source] = config

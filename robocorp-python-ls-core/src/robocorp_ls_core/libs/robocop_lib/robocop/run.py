@@ -1,276 +1,761 @@
+import textwrap
+from pathlib import Path
+from typing import Annotated, Optional
+
+import click
+import typer
+from rich.console import Console
+
+from robocop import __version__, config
+from robocop.formatter.runner import RobocopFormatter
+from robocop.formatter.skip import SkipConfig
+from robocop.linter.diagnostics import Diagnostic
+from robocop.linter.reports import load_reports, print_reports
+from robocop.linter.rules import RuleFilter, RuleSeverity, filter_rules_by_category, filter_rules_by_pattern
+from robocop.linter.runner import RobocopLinter
+from robocop.linter.utils.misc import ROBOCOP_RULES_URL, compile_rule_pattern, get_plural_form  # TODO: move higher up
+from robocop.migrate_config import migrate_deprecated_configs
+
+
+class CliWithVersion(typer.core.TyperGroup):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        click.version_option(version=__version__)(self)
+
+    def list_commands(self, ctx: typer.Context) -> list[str]:  # noqa: ARG002
+        """Return list of commands in the set order."""
+        commands = ["check", "format", "list", "docs"]
+        for command in self.commands:
+            if command not in commands:
+                commands.append(command)
+        return commands
+
+
+app = typer.Typer(
+    name="robocop",
+    help="Static code analysis tool (linter) and code formatter for Robot Framework. "
+    "Full documentation available at https://robocop.readthedocs.io .",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    rich_markup_mode="rich",
+    cls=CliWithVersion,
+)
+list_app = typer.Typer(help="List available rules, reports or formatters.")
+app.add_typer(list_app, name="list")
+
+
+# TODO: force-order
+config_option = Annotated[
+    Path,
+    typer.Option(
+        "--config",
+        help="Path to configuration file. It will overridden any configuration file found in the project.",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        resolve_path=True,
+        show_default=False,
+        rich_help_panel="Configuration",
+    ),
+]
+project_root_option = Annotated[
+    Path,
+    typer.Option(
+        help="Project root directory. It is used to find default configuration directory",
+        show_default="Automatically found from the sources and current working directory.",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        resolve_path=True,
+        rich_help_panel="Other",
+    ),
+]
+sources_argument = Annotated[
+    list[Path],
+    typer.Argument(
+        help="List of paths to be parsed by Robocop", show_default="current directory", rich_help_panel="File discovery"
+    ),
+]
+include_option = Annotated[
+    list[str],
+    typer.Option("--include", help="Include additional paths", show_default=False, rich_help_panel="File discovery"),
+]
+default_include_option = Annotated[
+    list[str],
+    typer.Option(
+        "--default-include",
+        help="Override to change default includes",
+        show_default=str(config.DEFAULT_INCLUDE),
+        rich_help_panel="File discovery",
+    ),
+]
+exclude_option = Annotated[
+    list[str],
+    typer.Option(
+        "--exclude", "-e", help="Exclude additional paths", show_default=False, rich_help_panel="File discovery"
+    ),
+]
+default_exclude_option = Annotated[
+    list[str],
+    typer.Option(
+        "--default-exclude",
+        help="Override to change default excludes",
+        show_default=str(config.DEFAULT_EXCLUDE),
+        rich_help_panel="File discovery",
+    ),
+]
+force_exclude_option = Annotated[
+    bool,
+    typer.Option(
+        "--force-exclude",
+        help="Enforce exclusions, even for paths passed directly in the command-line.",
+        show_default=False,
+        rich_help_panel="File discovery",
+    ),
+]
+language_option = Annotated[
+    list[str],
+    typer.Option(
+        "--language",
+        "--lang",
+        show_default="en",
+        metavar="LANG",
+        help="Parse Robot Framework files using additional languages.",
+        rich_help_panel="Other",
+    ),
+]
+verbose_option = Annotated[
+    bool,
+    typer.Option(
+        help="More verbose output.",
+        rich_help_panel="Other",
+    ),
+]
+separator_help = """
+Token separator to use in the outputs:
+
+- [bold]space[/bold]:   use --space-count spaces to separate tokens
+
+- tab:     use a single tabulation to separate tokens
 """
-Main class of Robocop module. Gathers files to be scanned, checkers, parses CLI arguments and scans files.
+line_ending_help = """
+Line separator to use in the outputs:
+
+    - [bold]native[/bold]:  use operating system's native line endings
+
+    - windows: use Windows line endings (CRLF)
+
+    - unix:    use Unix line endings (LF)
+
+    - auto:    maintain existing line endings (uses what's used in the first line)
 """
-import os
-import sys
-from collections import Counter
-
-from robot.api import get_resource_model
-from robot.errors import DataError
-
-import robocop.exceptions
-from robocop import checkers, reports
-from robocop.config import Config
-from robocop.files import get_files
-from robocop.rules import Message
-from robocop.utils import DisablersFinder, FileType, FileTypeChecker, RecommendationFinder, is_suite_templated
-from robocop.utils.file_types import check_model_type, get_resource_with_lang
 
 
-class Robocop:
+@app.command(name="check")
+def check_files(
+    sources: sources_argument = None,
+    include: include_option = None,
+    default_include: default_include_option = None,
+    exclude: exclude_option = None,
+    default_exclude: default_exclude_option = None,
+    force_exclude: force_exclude_option = False,
+    select: Annotated[
+        list[str],
+        typer.Option(
+            "--select", "-s", help="Select rules to run", show_default=False, rich_help_panel="Selecting rules"
+        ),
+    ] = None,
+    ignore: Annotated[
+        list[str],
+        typer.Option("--ignore", "-i", help="Ignore rules", show_default=False, rich_help_panel="Selecting rules"),
+    ] = None,
+    target_version: Annotated[
+        config.TargetVersion,
+        typer.Option(
+            case_sensitive=False,
+            help="Enable only rules supported by configured version",
+            rich_help_panel="Selecting rules",
+        ),
+    ] = None,
+    threshold: Annotated[
+        RuleSeverity,
+        typer.Option(
+            "--threshold",
+            "-t",
+            help="Disable rules below given threshold",
+            show_default=RuleSeverity.INFO.value,
+            parser=config.parse_rule_severity,
+            metavar="I/W/E",
+            rich_help_panel="Selecting rules",
+        ),
+    ] = None,
+    configuration_file: config_option = None,
+    configure: Annotated[
+        list[str],
+        typer.Option(
+            "--configure",
+            "-c",
+            help="Configure checker or report with parameter value",
+            metavar="rule.param=value",
+            show_default=False,
+            rich_help_panel="Configuration",
+        ),
+    ] = None,
+    reports: Annotated[
+        list[str],
+        typer.Option(
+            "--reports",
+            "-r",
+            show_default=False,
+            help="Generate reports from reported issues. To list available reports use `list reports` command. "
+            "Use `all` to enable all reports.",
+            rich_help_panel="Reports",
+        ),
+    ] = None,
+    issue_format: Annotated[
+        str, typer.Option("--issue-format", show_default=config.DEFAULT_ISSUE_FORMAT, rich_help_panel="Other")
+    ] = None,
+    language: language_option = None,
+    custom_rules: Annotated[
+        list[str],
+        typer.Option("--custom-rules", help="Load custom rules", show_default=False, rich_help_panel="Selecting rules"),
+    ] = None,
+    ignore_git_dir: Annotated[
+        bool,
+        typer.Option(
+            rich_help_panel="Configuration", help="Do not stop searching for config file when .git directory is found."
+        ),
+    ] = False,
+    ignore_file_config: Annotated[
+        bool, typer.Option(rich_help_panel="Configuration", help="Do not load configuration files.")
+    ] = False,
+    skip_gitignore: Annotated[
+        bool, typer.Option(help="Do not skip files listed in .gitignore files", rich_help_panel="File discovery")
+    ] = False,
+    persistent: Annotated[
+        bool,
+        typer.Option(
+            help="Use this flag to save Robocop reports in cache directory for later comparison.",
+            rich_help_panel="Reports",
+        ),
+    ] = None,
+    compare: Annotated[
+        bool,
+        typer.Option(
+            help="Compare reports results with previous results (saved with --persistent)", rich_help_panel="Reports"
+        ),
+    ] = None,
+    gitlab: Annotated[
+        bool,
+        typer.Option(
+            help="Generate Gitlab Code Quality report. Equivalent of --reports gitlab",
+            rich_help_panel="Reports",
+        ),
+    ] = False,
+    exit_zero: Annotated[
+        bool,
+        typer.Option(
+            help="Always exit with 0 unless Robocop terminates abnormally.",
+            show_default="--no-exit-zero",
+            rich_help_panel="Other",
+        ),
+    ] = None,
+    return_result: Annotated[
+        bool,
+        typer.Option(
+            help="Return check results as list of Diagnostic messages instead of exiting from the application.",
+            hidden=True,
+        ),
+    ] = False,
+    root: project_root_option = None,
+    verbose: verbose_option = None,
+) -> list[Diagnostic]:
+    """Lint Robot Framework files."""
+    if gitlab:
+        if not reports:
+            reports = []
+        reports.append("gitlab")
+    linter_config = config.LinterConfig(
+        configure=configure,
+        select=select,
+        ignore=ignore,
+        issue_format=issue_format,
+        threshold=threshold,
+        custom_rules=custom_rules,
+        reports=reports,
+        persistent=persistent,
+        compare=compare,
+        exit_zero=exit_zero,
+        return_result=return_result,
+    )
+    file_filters = config.FileFiltersOptions(
+        include=include, default_include=default_include, exclude=exclude, default_exclude=default_exclude
+    )
+    overwrite_config = config.Config(
+        linter=linter_config,
+        formatter=None,
+        file_filters=file_filters,
+        language=language,
+        verbose=verbose,
+        target_version=target_version,
+    )
+    config_manager = config.ConfigManager(
+        sources=sources,
+        config=configuration_file,
+        root=root,
+        ignore_git_dir=ignore_git_dir,
+        ignore_file_config=ignore_file_config,
+        skip_gitignore=skip_gitignore,
+        force_exclude=force_exclude,
+        overwrite_config=overwrite_config,
+    )
+    runner = RobocopLinter(config_manager)
+    return runner.run()
+
+
+@app.command(name="format")
+def format_files(
+    sources: sources_argument = None,
+    select: Annotated[
+        list[str],
+        typer.Option(
+            show_default=False,
+            metavar="FORMATTER",
+            help="Select formatters to run.",
+            rich_help_panel="Selecting formatters",
+        ),
+    ] = None,
+    custom_formatters: Annotated[
+        list[str],
+        typer.Option(
+            show_default=False,
+            metavar="FORMATTER",
+            help="Run custom formatters.",
+            rich_help_panel="Selecting formatters",
+        ),
+    ] = None,
+    force_order: Annotated[
+        bool,
+        typer.Option(help="Use formatters in a order as provided in the cli", rich_help_panel="Selecting formatters"),
+    ] = None,
+    include: include_option = None,
+    default_include: default_include_option = None,
+    exclude: exclude_option = None,
+    default_exclude: default_exclude_option = None,
+    force_exclude: force_exclude_option = False,
+    configure: Annotated[
+        list[str],
+        typer.Option(
+            "--configure",
+            "-c",
+            help="Configure checker or report with parameter value",
+            metavar="rule.param=value",
+            show_default=False,
+            rich_help_panel="Configuration",
+        ),
+    ] = None,
+    configuration_file: config_option = None,
+    overwrite: Annotated[bool, typer.Option(help="Write changes back to file", rich_help_panel="Work modes")] = None,
+    diff: Annotated[
+        bool, typer.Option(help="Show difference after formatting the file", rich_help_panel="Work modes")
+    ] = None,
+    color: Annotated[
+        bool, typer.Option(help="Colorized difference", show_default=True, rich_help_panel="Work modes")
+    ] = None,
+    check: Annotated[
+        bool,
+        typer.Option(
+            help="Do not overwrite files, and exit with return status depending on if any file would be modified",
+            rich_help_panel="Work modes",
+        ),
+    ] = None,
+    output: Annotated[Path, typer.Option(rich_help_panel="Other")] = None,
+    language: language_option = None,
+    space_count: Annotated[
+        int,
+        typer.Option(show_default="4", help="Number of spaces between cells", rich_help_panel="Formatting settings"),
+    ] = None,
+    indent: Annotated[
+        int,
+        typer.Option(
+            show_default="same as --space-count",
+            help="The number of spaces to be used as indentation",
+            rich_help_panel="Formatting settings",
+        ),
+    ] = None,
+    continuation_indent: Annotated[
+        int,
+        typer.Option(
+            show_default="same as --space-count",
+            help="The number of spaces to be used as separator after ... (line continuation) token",
+            rich_help_panel="Formatting settings",
+        ),
+    ] = None,
+    line_length: Annotated[
+        int,
+        typer.Option(show_default="120", help="Number of spaces between cells", rich_help_panel="Formatting settings"),
+    ] = None,
+    separator: Annotated[
+        str, typer.Option(show_default="space", help=separator_help, rich_help_panel="Formatting settings")
+    ] = None,
+    line_ending: Annotated[
+        str, typer.Option(show_default="native", help=line_ending_help, rich_help_panel="Formatting settings")
+    ] = None,
+    start_line: Annotated[
+        int,
+        typer.Option(
+            show_default=False,
+            help="Limit formatting only to selected area. "
+            "If --end-line is not provided, format text only at --start-line",
+            rich_help_panel="Formatting settings",
+        ),
+    ] = None,
+    end_line: Annotated[
+        int,
+        typer.Option(
+            show_default=False, help="Limit formatting only to selected area.", rich_help_panel="Formatting settings"
+        ),
+    ] = None,
+    target_version: Annotated[
+        config.TargetVersion,
+        typer.Option(
+            case_sensitive=False,
+            help="Enable only formatters supported by configured version",
+            rich_help_panel="Selecting formatters",
+        ),
+    ] = None,
+    skip: Annotated[
+        list[str],
+        typer.Option(
+            show_default=False,
+            help="Skip formatting of code block with the given type",
+            rich_help_panel="Skip formatting",
+        ),
+    ] = None,
+    skip_sections: Annotated[
+        list[str],
+        typer.Option(
+            show_default=False, help="Skip formatting of selected sections", rich_help_panel="Skip formatting"
+        ),
+    ] = None,
+    skip_keyword_call: Annotated[
+        list[str],
+        typer.Option(
+            show_default=False,
+            help="Skip formatting of keywords with the given name",
+            rich_help_panel="Skip formatting",
+        ),
+    ] = None,
+    skip_keyword_call_pattern: Annotated[
+        list[str],
+        typer.Option(
+            show_default=False,
+            help="Skip formatting of keywords that matches with the given pattern",
+            rich_help_panel="Skip formatting",
+        ),
+    ] = None,
+    ignore_git_dir: Annotated[
+        bool,
+        typer.Option(
+            rich_help_panel="Configuration", help="Do not stop searching for config file when .git directory is found."
+        ),
+    ] = False,
+    ignore_file_config: Annotated[
+        bool, typer.Option(rich_help_panel="Configuration", help="Do not load configuration files.")
+    ] = False,
+    skip_gitignore: Annotated[bool, typer.Option(rich_help_panel="File discovery")] = False,
+    reruns: Annotated[
+        int,
+        typer.Option(
+            "--reruns",
+            "-r",
+            help="Rerun formatting up to reruns times until the code stops changing.",
+            show_default="0",
+            rich_help_panel="Work modes",
+        ),
+    ] = None,
+    root: project_root_option = None,
+    verbose: verbose_option = None,
+) -> None:
+    """Format Robot Framework files."""
+    whitespace_config = config.WhitespaceConfig(
+        space_count=space_count,
+        indent=indent,
+        continuation_indent=continuation_indent,
+        line_ending=line_ending,
+        separator=separator,
+        line_length=line_length,
+    )
+    skip_config = SkipConfig.from_lists(
+        skip=skip,
+        keyword_call=skip_keyword_call,
+        keyword_call_pattern=skip_keyword_call_pattern,
+        sections=skip_sections,
+    )
+    formatter_config = config.FormatterConfig(
+        select=select,
+        custom_formatters=custom_formatters,
+        force_order=force_order,
+        whitespace_config=whitespace_config,
+        skip_config=skip_config,
+        configure=configure,
+        overwrite=overwrite,
+        output=output,
+        diff=diff,
+        color=color,
+        check=check,
+        start_line=start_line,
+        end_line=end_line,
+        reruns=reruns,
+    )
+    file_filters = config.FileFiltersOptions(
+        include=include, default_include=default_include, exclude=exclude, default_exclude=default_exclude
+    )
+    overwrite_config = config.Config(
+        formatter=formatter_config,
+        linter=None,
+        language=language,
+        file_filters=file_filters,
+        verbose=verbose,
+        target_version=target_version,
+    )
+    config_manager = config.ConfigManager(
+        sources=sources,
+        config=configuration_file,
+        root=root,
+        ignore_git_dir=ignore_git_dir,
+        ignore_file_config=ignore_file_config,
+        skip_gitignore=skip_gitignore,
+        force_exclude=force_exclude,
+        overwrite_config=overwrite_config,
+    )
+    runner = RobocopFormatter(config_manager)
+    runner.run()
+
+
+@list_app.command(name="rules")
+def list_rules(
+    filter_category: Annotated[
+        RuleFilter, typer.Option("--filter", case_sensitive=False, help="Filter rules by category.")
+    ] = RuleFilter.ALL,
+    filter_pattern: Annotated[Optional[str], typer.Option("--pattern", help="Filter rules by pattern")] = None,
+    target_version: Annotated[
+        config.TargetVersion,
+        typer.Option(
+            case_sensitive=False,
+            help="Enable only rules supported by configured version",
+        ),
+    ] = None,
+) -> None:
     """
-    Main class for running the checks.
+    List available rules.
 
-    If you want to run checks with non default configuration create your own ``Config`` and pass it to ``Robocop``.
-    Use ``Robocop.run()`` method to start analysis. If ``from_cli`` is set to ``False`` it will return
-    list of found issues in JSON format.
+    Use `--filter`` option to list only selected rules:
 
-    Example::
+    > robocop list rules --filter DISABLED
 
-        import robocop
-        from robocop.config import Config
+    You can also specify the patterns to filter by:
 
-        config = Config()
-        config.include = {'1003'}
-        config.paths = ['tests\\atest\\rules\\section-out-of-order']
+    > robocop list rules --pattern *var*
 
-        robocop_runner = robocop.Robocop(config=config)
-        issues = robocop_runner.run()
-
+    Use `robocop rule rule_name` for more detailed information on the rule.
+    The output list is affected by default configuration file (if it is found).
     """
-
-    def __init__(self, from_cli: bool = False, config: Config = None):
-        self.files = {}
-        self.checkers = []
-        self.rules = {}
-        self.reports = {}
-        self.root = os.getcwd()
-        self.config = Config(from_cli=from_cli) if config is None else config
-        self.from_cli = from_cli
-        if not from_cli:
-            self.config.reports.append("json_report")
-        self.out = self.set_output()
-
-    def set_output(self):
-        """Set output for printing to file if configured. Else use standard output"""
-        return self.config.output or None
-
-    def write_line(self, line):
-        """Print line using file=self.out parameter (set in `set_output` method)"""
-        print(line, file=self.out)
-
-    def reload_config(self):
-        """Reload checkers and reports based on current config"""
-        self.load_checkers()
-        self.config.reload(self.rules)
-        self.load_reports()
-        self.configure_checkers_or_reports()
-        self.check_for_disabled_rules()
-        self.list_checkers()
-
-    def run(self):
-        """Entry point for running scans"""
-        self.reload_config()
-        self.recognize_file_types()
-        self.run_checks()
-        self.make_reports()
-        if self.config.output and not self.out.closed:
-            self.out.close()
-        if self.from_cli:
-            sys.exit(self.reports["return_status"].return_status)
-        else:
-            return self.reports["json_report"].issues
-
-    def recognize_file_types(self):
-        """
-        Pre-parse files to recognize their types. If the filename is `__init__.*`, the type is `INIT`.
-        Files with .resource extension are `RESOURCE` type.
-        If the file is imported somewhere then file type is `RESOURCE`. Otherwise, file type is `GENERAL`.
-        These types are important since they are used to define parsing class for robot API.
-        """
-        file_type_checker = FileTypeChecker(self.config.exec_dir)
-        for file in get_files(self.config):
-            if "__init__" in file.name:
-                file_type = FileType.INIT
-            elif file.suffix.lower() == ".resource":
-                file_type = FileType.RESOURCE
-            else:
-                file_type = FileType.GENERAL
-            file_type_checker.source = file
-            try:
-                resource_parser = file_type.get_parser()
-                model = get_resource_with_lang(resource_parser, str(file), self.config.language)
-                check_model_type(file_type_checker, model)
-                self.files[file] = (file_type, model)
-            except DataError:
-                print(f"Failed to decode {file}. Default supported encoding by Robot Framework is UTF-8. Skipping file")
-
-        for resource in file_type_checker.resource_files:
-            if resource in self.files and self.files[resource][0].value != FileType.RESOURCE:
-                self.files[resource] = (
-                    FileType.RESOURCE,
-                    get_resource_with_lang(get_resource_model, str(resource), self.config.language),
-                )
-
-    def run_checks(self):
-        for file in self.files:
-            if self.config.verbose:
-                print(f"Scanning file: {file}")
-            model = self.files[file][1]
-            found_issues = self.run_check(model, str(file))
-            found_issues.sort()
-            for issue in found_issues:
-                self.report(issue)
-        if "file_stats" in self.reports:
-            self.reports["file_stats"].files_count = len(self.files)
-
-    def run_check(self, ast_model, filename, source=None):
-        disablers = DisablersFinder(filename=filename, source=source)
-        if disablers.file_disabled:
-            return []
-        found_issues = []
-        templated = is_suite_templated(ast_model)
-        for checker in self.checkers:
-            if checker.disabled:
-                continue
-            found_issues += [
-                issue
-                for issue in checker.scan_file(ast_model, filename, source, templated)
-                if not disablers.is_rule_disabled(issue)
-            ]
-        return found_issues
-
-    def report(self, rule_msg: Message):
-        for report in self.reports.values():
-            report.add_message(rule_msg)
-        try:
-            source_rel = os.path.relpath(os.path.expanduser(rule_msg.source), self.root)
-        except ValueError:
-            source_rel = rule_msg.source
-        self.log_message(
-            source=rule_msg.source,
-            source_rel=source_rel,
-            line=rule_msg.line,
-            col=rule_msg.col,
-            end_line=rule_msg.end_line,
-            end_col=rule_msg.end_col,
-            severity=rule_msg.severity.value,
-            rule_id=rule_msg.rule_id,
-            desc=rule_msg.desc,
-            name=rule_msg.name,
+    # TODO: rich support (colorized enabled, severity etc)
+    console = Console(soft_wrap=True)
+    linter_config = config.LinterConfig(  # set to None to not override
+        configure=None,
+        select=None,
+        ignore=None,
+        issue_format=None,
+        threshold=None,
+        custom_rules=None,
+        reports=None,
+        persistent=None,
+        compare=None,
+        exit_zero=None,
+    )
+    overwrite_config = config.Config(
+        linter=linter_config,
+        formatter=None,
+        file_filters=None,
+        language=None,
+        verbose=None,
+        target_version=target_version,
+    )
+    config_manager = config.ConfigManager(overwrite_config=overwrite_config)
+    runner = RobocopLinter(config_manager)
+    default_config = runner.config_manager.default_config
+    if filter_pattern:
+        filter_pattern = compile_rule_pattern(filter_pattern)
+        rules = filter_rules_by_pattern(default_config.linter.rules, filter_pattern)
+    else:
+        rules = filter_rules_by_category(
+            default_config.linter.rules, filter_category, default_config.linter.target_version
         )
+    severity_counter = {"E": 0, "W": 0, "I": 0}
+    enabled = 0
+    for rule in rules:
+        is_enabled = rule.enabled and not rule.is_disabled(default_config.linter.target_version)
+        enabled += int(is_enabled)
+        console.print(rule.rule_short_description(default_config.linter.target_version))
+        severity_counter[rule.severity.value] += 1
+    configurable_rules_sum = sum(severity_counter.values())
+    plural = get_plural_form(configurable_rules_sum)
+    console.print(f"\nAltogether {configurable_rules_sum} rule{plural} ({enabled} enabled).\n")
+    print(f"Visit {ROBOCOP_RULES_URL.format(version='stable')} page for detailed documentation.")
 
-    def log_message(self, **kwargs):
-        self.write_line(self.config.format.format(**kwargs))
 
-    def load_checkers(self):
-        self.checkers = []
-        self.rules = {}
-        checkers.init(self)
+@list_app.command(name="reports")
+def list_reports(
+    enabled: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--enabled/--disabled",
+            help="List enabled or disabled reports. Reports configuration will be loaded from the default "
+            "configuration file or `--reports`` option.",
+            show_default=False,
+        ),
+    ] = None,
+    reports: Annotated[
+        list[str],
+        typer.Option(
+            "--reports",
+            "-r",
+            show_default=False,
+            help="Enable selected reports.",
+        ),
+    ] = None,
+) -> None:
+    """List available reports."""
+    console = Console(soft_wrap=True)
+    linter_config = config.LinterConfig(reports=reports)
+    overwrite_config = config.Config(linter=linter_config)
+    config_manager = config.ConfigManager(overwrite_config=overwrite_config)
+    runner = RobocopLinter(config_manager)
+    console.print(print_reports(runner.reports, enabled))  # TODO: color etc
 
-    def list_checkers(self):
-        if not (self.config.list or self.config.list_configurables):
-            return
-        if self.config.list_configurables:
-            print(
-                "All rules have configurable parameter 'severity'. Allowed values are:"
-                "\n    E / error\n    W / warning\n    I / info\n"
-            )
-        pattern = self.config.list if self.config.list else self.config.list_configurables
-        if pattern in ("ENABLED", "DISABLED"):
-            rule_by_id = {
-                rule.rule_id: rule for rule in self.rules.values() if pattern.lower() in rule.get_enabled_status_desc()
-            }
-        else:
-            rule_by_id = {rule.rule_id: rule for rule in self.rules.values() if rule.matches_pattern(pattern)}
-        rule_by_id = sorted(rule_by_id.values(), key=lambda x: x.rule_id)
-        severity_counter = Counter({"E": 0, "W": 0, "I": 0})
-        for rule in rule_by_id:
-            if self.config.list:
-                print(rule)
-                severity_counter[rule.severity.value] += 1
-            else:
-                _, params = rule.available_configurables(include_severity=False)
-                if params:
-                    print(f"{rule}\n" f"    {params}")
-                    severity_counter[rule.severity.value] += 1
-        configurable_rules_sum = sum(severity_counter.values())
-        plural = "" if configurable_rules_sum == 1 else "s"
-        print(
-            f"\nAltogether {configurable_rules_sum} rule{plural} with following severity:\n"
-            f"    {severity_counter['E']} error rule{'' if severity_counter['E'] == 1 else 's'},\n"
-            f"    {severity_counter['W']} warning rule{'' if severity_counter['W'] == 1 else 's'},\n"
-            f"    {severity_counter['I']} info rule{'' if severity_counter['I'] == 1 else 's'}.\n"
+
+@list_app.command(name="formatters")
+def list_formatters(
+    filter_category: Annotated[
+        RuleFilter, typer.Option("--filter", case_sensitive=False, help="Filter formatters by category.")
+    ] = RuleFilter.ALL,
+    target_version: Annotated[
+        config.TargetVersion,
+        typer.Option(
+            case_sensitive=False,
+            help="Enable only rules supported by configured version",
+        ),
+    ] = None,
+) -> None:
+    """List available formatters."""
+    from rich.table import Table
+
+    console = Console(soft_wrap=True)
+    formatter_config = config.FormatterConfig(
+        select=None,
+        custom_formatters=None,
+        force_order=None,
+        whitespace_config=config.WhitespaceConfig(),
+        skip_config=config.SkipConfig(),
+        configure=None,
+        overwrite=None,
+        output=None,
+        diff=None,
+        color=None,
+        check=None,
+        start_line=None,
+        end_line=None,
+        reruns=None,
+        allow_disabled=True,
+    )
+    overwrite_config = config.Config(
+        linter=None,
+        formatter=formatter_config,
+        file_filters=None,
+        language=None,
+        verbose=None,
+        target_version=target_version,
+    )
+    config_manager = config.ConfigManager(overwrite_config=overwrite_config)
+    default_config = config_manager.default_config
+    if filter_category == filter_category.ALL:
+        formatters = list(default_config.formatter.formatters.values())
+    elif filter_category == filter_category.ENABLED:
+        formatters = [formatter for formatter in default_config.formatter.formatters.values() if formatter.ENABLED]
+    elif filter_category == filter_category.DISABLED:
+        formatters = [formatter for formatter in default_config.formatter.formatters.values() if not formatter.ENABLED]
+    else:
+        raise ValueError(f"Unrecognized rule category '{filter_category}'")
+    table = Table(title="Formatters", header_style="bold red")
+    table.add_column("Name", justify="left", no_wrap=True)
+    table.add_column("Enabled")
+    for formatter in formatters:
+        decorated_enable = "Yes" if formatter.ENABLED else "No"
+        table.add_row(formatter.__class__.__name__, decorated_enable)
+    console.print(table)
+    console.print(
+        "To see detailed docs run:\n"
+        "    [bold]robocop docs [blue]formatter_name[/][/]\n"
+        "Non-default formatters needs to be selected explicitly with [bold cyan]--select[/] or "
+        "configured with param `enabled=True`.\n"
+    )
+
+
+@app.command("docs")
+def print_resource_documentation(name: Annotated[str, typer.Argument(help="Rule name")]) -> None:
+    """Print formatter, rule or report documentation."""
+    # TODO load external from cli
+    console = Console(soft_wrap=True)
+    config_manager = config.ConfigManager()
+
+    runner = RobocopLinter(config_manager)
+    default_config = runner.config_manager.default_config
+    if name in default_config.linter.rules:
+        console.print(default_config.linter.rules[name].description_with_configurables)
+        return
+
+    reports = load_reports(config_manager.default_config)
+    if name in reports:
+        docs = textwrap.dedent(reports[name].__doc__)
+        console.print(docs)
+        return
+
+    formatter_config = config.FormatterConfig()
+    if name in formatter_config.formatters:
+        docs = textwrap.dedent(formatter_config.formatters[name].__doc__)
+        console.print(f"Formatter [bold]{name}[/bold]:")
+        console.print(docs)
+        console.print(
+            f"See https://robocop.readthedocs.io/en/stable/formatters/formatters_list/{name}.html for more information."
         )
-        print("Visit https://robocop.readthedocs.io/en/stable/rules.html page for detailed documentation.")
-        sys.exit()
-
-    def load_reports(self):
-        self.reports = reports.get_reports(self.config.reports)
-        if self.config.list_reports:
-            available_reports = reports.list_reports(self.reports)
-            print(available_reports)
-            sys.exit()
-
-    def register_checker(self, checker):
-        for rule_name, rule in checker.rules.items():
-            self.rules[rule_name] = rule
-            self.rules[rule.rule_id] = rule
-        self.checkers.append(checker)
-
-    def check_for_disabled_rules(self):
-        """Check checker configuration to disable rules."""
-        for checker in self.checkers:
-            if not self.any_rule_enabled(checker):
-                checker.disabled = True
-
-    def make_reports(self):
-        for report in self.reports.values():
-            if report.name == "sarif":
-                output = report.get_report(self.config, self.rules)
-            else:
-                output = report.get_report()
-            if output is not None:
-                self.write_line(output)
-
-    def any_rule_enabled(self, checker) -> bool:
-        for name, rule in checker.rules.items():
-            rule.enabled = self.config.is_rule_enabled(rule)
-            checker.rules[name] = rule
-        return any(msg.enabled for msg in checker.rules.values())
-
-    def configure_checkers_or_reports(self):
-        for config in self.config.configure:
-            if config.count(":") < 2:
-                raise robocop.exceptions.ConfigGeneralError(
-                    f"Provided invalid config: '{config}' (general pattern: <rule>:<param>:<value>)"
-                )
-            rule_or_report, param, value = config.split(":", maxsplit=2)
-            if rule_or_report in self.rules:
-                rule = self.rules[rule_or_report]
-                rule.configure(param, value)
-            elif rule_or_report in self.reports:
-                self.reports[rule_or_report].configure(param, value)
-            else:
-                similar = RecommendationFinder().find_similar(rule_or_report, self.rules)
-                raise robocop.exceptions.ConfigGeneralError(
-                    f"Provided rule or report '{rule_or_report}' does not exist. {similar}"
-                )
+    else:
+        console.print(f"There is no rule, formatter or a report with a '{name}' name.")
+        raise typer.Exit(code=2)
 
 
-def run_robocop():
-    try:
-        linter = Robocop(from_cli=True)
-        linter.run()
-    except robocop.exceptions.RobotFrameworkParsingError:
-        raise
-    except robocop.exceptions.RobocopFatalError as err:
-        print(f"Error: {err}")
-        sys.exit(1)
-    except Exception as err:
-        message = (
-            "\nFatal exception occurred. You can create an issue at "
-            "https://github.com/MarketSquare/robotframework-robocop/issues/new/choose - Thanks!"
-        )
-        err.args = (err.args[0] + message,) + err.args[1:]
-        raise err
+@app.command("migrate")
+def migrate_config(
+    config_path: Annotated[
+        Path, typer.Argument(help="Path to the configuration file to be migrated.", show_default=False)
+    ],
+) -> None:
+    """
+    Migrate Robocop and Robotidy old configuration files to the new format supported by the Robocop 6.0.
+
+    All the comments and formatting is not preserved. Robocop will take original file and create new, with the suffix
+    ``_migrated``. Original configuration file should have ``tool.robocop`` or/and ``tool.robotidy`` section.
+    If there are both sections, and they contain common option (such as include/exclude paths), option from
+    ``tool.robocop`` section will take precedence.
+
+    Rule ids and names will be also migrated. Patterns (such as ``*docs*``) will be however ignored.
+
+    If you have separate configuration files for Robocop and Robotidy, run the command twice and merge it manually.
+    """
+    migrate_deprecated_configs(config_path)
+
+
+def main() -> None:
+    app(windows_expand_args=False)

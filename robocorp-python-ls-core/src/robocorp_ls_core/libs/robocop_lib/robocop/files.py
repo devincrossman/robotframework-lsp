@@ -1,91 +1,55 @@
-from functools import lru_cache
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Any
 
-from pathspec import PathSpec
+import click
 
-from robocop.exceptions import FileError
+try:
+    import tomllib as toml
+except ImportError:  # Python < 3.11
+    import tomli as toml
 
-DEFAULT_EXCLUDES = r"(\.direnv|\.eggs|\.git|\.hg|\.nox|\.tox|\.venv|venv|\.svn)"
+
+def load_toml_file(config_path: Path) -> dict[str, Any]:
+    try:
+        with config_path.open("rb") as tf:
+            return toml.load(tf)
+    except (toml.TOMLDecodeError, OSError) as e:
+        raise click.FileError(filename=str(config_path), hint=f"Error reading configuration file: {e}") from None
 
 
-def find_project_root(root, srcs):
+def read_toml_config(config_path: Path) -> dict[str, Any] | None:
     """
-    Find project root.
-    If not provided in ``root`` argument, the first parent directory containing either .git, .robocop or pyproject.toml
-    file in any of  ``srcs`` paths will be root category.
-    If not found, returns the root of the file system.
+    Load and return toml configuration file.
+
+    For pyproject.toml files we need to retrieve configuration from [tool.robocop] section. This section is not
+    required for the robocop.toml file.
     """
-    if root is not None:
-        return Path(root)
-    if not srcs:
-        return Path("/").resolve()
+    config = load_toml_file(config_path)
+    if config_path.name == "robocop.toml":
+        if tool_config := config.get("tool", {}).get("robocop", {}):
+            config = tool_config
+    else:
+        config = config.get("tool", {}).get("robocop", {})
+    if not config:
+        return None
+    return {k.replace("-", "_"): v for k, v in config.items()}
 
-    path_srcs = [Path(Path.cwd(), src).resolve() for src in srcs]
 
-    # A list of lists of parents for each 'src'. 'src' is included as a
-    # "parent" of itself if it is a directory
-    src_parents = [list(path.parents) + ([path] if path.is_dir() else []) for path in path_srcs]
+def get_relative_path(path: str | Path, parent_path: Path) -> Path:
+    try:
+        return Path(path).relative_to(parent_path)
+    except ValueError:  # symlink etc
+        return path
+
+
+def get_common_parent_dirs(sources: list[Path]) -> list[Path]:
+    """Return list of common parent directories for list of paths."""
+    src_parents = [list(path.parents) + ([path] if path.is_dir() else []) for path in sources]
 
     common_base = max(
         set.intersection(*(set(parents) for parents in src_parents)),
         key=lambda path: path.parts,
     )
-
-    for directory in (common_base, *common_base.parents):
-        if (
-            (directory / ".git").exists()
-            or (directory / "pyproject.toml").is_file()
-            or (directory / ".robocop").is_file()
-        ):
-            return directory
-    return directory
-
-
-def find_file_in_project_root(config_name, root):
-    for parent in (root, *root.parents):
-        if (parent / ".git").exists() or (parent / config_name).is_file():
-            return parent / config_name
-    return parent / config_name
-
-
-@lru_cache()
-def get_gitignore(root):
-    """Return a PathSpec matching gitignore content if present."""
-    gitignore = root / ".gitignore"
-    lines = []
-    if gitignore.is_file():
-        with gitignore.open(encoding="utf-8") as gf:
-            lines = gf.readlines()
-    return PathSpec.from_lines("gitwildmatch", lines)
-
-
-def get_files(config):
-    gitignore = get_gitignore(config.root)
-    for file in config.paths:
-        yield from get_absolute_path(Path(file), config, gitignore)
-
-
-def get_absolute_path(path, config, gitignore):
-    if not path.exists():
-        raise FileError(path)
-    if config.is_path_ignored(path):
-        return
-    if gitignore is not None and gitignore.match_file(path):
-        return
-    if path.is_file():
-        if should_parse(config, path):
-            yield path.absolute()
-    elif path.is_dir():
-        for file in path.iterdir():
-            if file.is_dir() and not config.recursive:
-                continue
-            yield from get_absolute_path(
-                file,
-                config,
-                gitignore + get_gitignore(path) if gitignore is not None else None,
-            )
-
-
-def should_parse(config, file):
-    """Check if file extension is in list of supported file types (can be configured from cli)"""
-    return file.suffix and file.suffix.lower() in config.filetypes
+    return [common_base, *common_base.parents]

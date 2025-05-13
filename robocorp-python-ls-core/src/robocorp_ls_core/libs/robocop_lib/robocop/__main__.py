@@ -1,3 +1,4 @@
-import robocop
+from robocop.run import main
 
-robocop.run_robocop()
+if __name__ == "__main__":
+    main()
