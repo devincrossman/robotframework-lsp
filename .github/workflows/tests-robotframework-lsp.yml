@@ -84,7 +84,8 @@ jobs:
       working-directory: ./robotframework-ls
       run: |
         cd src
-        python setup.py install
+        pip install --upgrade pip setuptools wheel
+        pip install .
         cd ..
     - name: Install test deps
       working-directory: ./robotframework-ls
