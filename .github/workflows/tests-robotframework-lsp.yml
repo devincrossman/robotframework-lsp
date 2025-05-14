@@ -24,6 +24,7 @@ jobs:
           "windows-py311-pip-v3",
           "ubuntu-py310-pip-v5",  # RF5 Must be with 3.10 due to a test using the `|` union operator.
           "ubuntu-py38-pip-v6",
+          "windows-py313-pip-v7"
         ]
         
         include:
@@ -36,6 +37,9 @@ jobs:
           - name: "ubuntu-py38-pip-v6"
             python: "3.8"
             os: ubuntu-latest
+          - name: "windows-py313-pip-v7"
+            python: "3.13.2"
+            os: windows-latest
 
     steps:
     - name: Checkout repository and submodules
@@ -64,6 +68,9 @@ jobs:
     - name: Install robotframework from pip
       run: python -W ignore -m pip install "robotframework>=6.0,<7.0"
       if: contains(matrix.name, '-pip-v6')
+    - name: Install robotframework from pip
+      run: python -W ignore -m pip install "robotframework>=7.0,<8.0"
+      if: contains(matrix.name, '-pip-v7')
     - name: Install robotremoteserver via pip
       run: python -W ignore -m pip install robotremoteserver
     - name: Vendor deps

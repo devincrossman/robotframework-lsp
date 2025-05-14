@@ -947,7 +947,7 @@ def _iter_keyword_arguments_tokens(
 
 
 def iter_keyword_arguments_as_tokens(ast) -> Iterator[IRobotToken]:
-    """
+    R"""
     API tailored at getting variables from keyword arguments.
 
     It converts an argument such as:
@@ -2057,7 +2057,7 @@ def _gen_tokens_in_py_expr(
     py_expr,
     expression_token,
 ) -> Iterator[Tuple[IRobotToken, AdditionalVarInfo]]:
-    from tokenize import generate_tokens, NAME, ERRORTOKEN
+    from tokenize import generate_tokens, NAME, OP
     from io import StringIO
     from robot.api import Token
 
@@ -2067,7 +2067,7 @@ def _gen_tokens_in_py_expr(
     gen_var_token_info = None
     try:
         for token_info in generate_tokens(StringIO(py_expr).readline):
-            if token_info.type == ERRORTOKEN and token_info.string == "$":
+            if token_info.type == OP and token_info.string == "$":
                 gen_var_token_info = token_info
 
             elif gen_var_token_info is not None and token_info.type == NAME:

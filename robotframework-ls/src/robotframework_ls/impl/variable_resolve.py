@@ -45,7 +45,7 @@ def is_python_eval_var(normalized_variable_name):
     )
 
 
-_separator_chars = [re.escape(c) for c in """./\()"'-:,.;<>~!@#$%^&*|+=[]{}`~?"""]
+_separator_chars = [re.escape(c) for c in R"""./\()"'-:,.;<>~!@#$%^&*|+=[]{}`~?"""]
 
 _match_extended = re.compile(
     r"""
