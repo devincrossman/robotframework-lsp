@@ -12,7 +12,7 @@
         "url": "https://github.com/devincrossman/robotframework-lsp/issues"
     },
     "license": "Apache 2.0",
-    "version": "1.14",
+    "version": "1.14.0",
     "icon": "images/icon.png",
     "publisher": "robocorp",
     "categories": [
