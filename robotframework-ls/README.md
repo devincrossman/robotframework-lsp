@@ -6,7 +6,7 @@ This is a fork of the original [Robocorp robotframework-lsp monorepo](https://gi
 
 This fork is being developed and maintained solely to apply updates and fixes that align with our specific use case and to ensure compatibility with the latest versions of [Robot Framework](https://robotframework.org/).
 
-## Features (1.13.0)
+## Features (1.14.0)
 
 -   Robot Output View:
     -   View current task/test being executed.

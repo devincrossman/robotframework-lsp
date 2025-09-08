@@ -1078,8 +1078,8 @@ class _RobotDebuggerImpl(object):
             for entry in reversed(self._stack_ctx_entries_deque):
                 if not source:
                     source = self._source_as_str(entry.source)
-                if lineno is None:
-                    lineno = entry.lineno
+                if lineno is None and hasattr(ctx, "lineno"):
+                    lineno = ctx.lineno
                 break
 
         self._stack_ctx_entries_deque.append(
