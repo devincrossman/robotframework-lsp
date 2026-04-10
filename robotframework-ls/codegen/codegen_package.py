@@ -1,5 +1,11 @@
 import os.path
 
+FORK_REPOSITORY_URL = "https://github.com/devincrossman/robotframework-lsp"
+FORK_ISSUES_URL = f"{FORK_REPOSITORY_URL}/issues"
+FORK_TAG_README_URL = (
+    f"{FORK_REPOSITORY_URL}/blob/robotframework-lsp-{{version}}/robotframework-ls/README.md"
+)
+
 
 def get_submenus():
     return [{"id": "robotsubmenu", "label": "Robot Framework"}]
@@ -118,13 +124,13 @@ def get_json_contents():
         "name": "robotframework-lsp",
         "displayName": "Robot Framework Language Server",
         "description": "VSCode extension support for Robot Framework",
-        "author": "Fabio Zadrozny",
-        "homepage": f"https://github.com/robocorp/robotframework-lsp/blob/robotframework-lsp-{__version__}/robotframework-ls/README.md",
+        "author": "Devin Crossman (based on original work by Fabio Zadrozny)",
+        "homepage": FORK_TAG_README_URL.format(version=__version__),
         "repository": {
             "type": "git",
-            "url": "https://github.com/robocorp/robotframework-lsp.git",
+            "url": f"{FORK_REPOSITORY_URL}.git",
         },
-        "bugs": {"url": "https://github.com/robocorp/robotframework-lsp/issues"},
+        "bugs": {"url": FORK_ISSUES_URL},
         "license": "Apache 2.0",
         "version": f"{__version__}",
         "icon": "images/icon.png",
@@ -421,30 +427,12 @@ vscode_js_client_src_dir = os.path.join(root_dir, "vscode-client", "src")
 vscode_py_src_dir = os.path.join(root_dir, "src")
 
 
-def run_intellij_codegen():
-    """
-    The Intellij codegen is dependent on the package.json too, so, let's run it
-    too.
-    """
-    import sys
-    from pathlib import Path
-
-    target = Path(root_dir) / ".." / "robotframework-intellij"
-    assert target.exists(), f"{target} does not exist"
-    sys.path.append(str(target))
-    import codegen_intellij  # noqa
-
-    codegen_intellij.main()
-
-
 def main():
     write_to_package_json()
 
     write_py_commands()
 
     write_py_settings()
-
-    run_intellij_codegen()
 
 
 if __name__ == "__main__":

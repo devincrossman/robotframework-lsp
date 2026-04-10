@@ -1,0 +1,82 @@
+name: Build - RobotFramework Language Server
+
+on:
+  push:
+    paths:
+      - "robotframework-ls/**"
+      - "robotframework-interactive/**"
+      - "robocorp-python-ls-core/**"
+      - ".github/workflows/build-robotframework-lsp.yml"
+  pull_request:
+    paths:
+      - "robotframework-ls/**"
+      - "robotframework-interactive/**"
+      - "robocorp-python-ls-core/**"
+      - ".github/workflows/build-robotframework-lsp.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./robotframework-ls
+
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install extension dependencies
+        run: yarn install
+
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip fire wheel setuptools
+
+      - name: Refresh generated files
+        run: python codegen/codegen_package.py
+        env:
+          PYTHONPATH: src
+
+      - name: Determine extension version
+        run: |
+          echo "ROBOTFRAMEWORK_LSP_VERSION=$(node -p 'require("./package.json").version')" >> "$GITHUB_ENV"
+
+      - name: Vendor robocorp_ls_core, robotframework_interactive, and robotframework-output-stream
+        run: |
+          python -m dev vendor-robocorp-ls-core
+          python -m dev vendor-robotframework-interactive
+          python -m dev vendor-robotframework-output-stream
+
+      - name: Build wheel and source distribution
+        working-directory: ./robotframework-ls/src
+        run: python setup.py sdist bdist_wheel --universal
+
+      - name: Build VSIX
+        run: npx --yes vsce@2.6.7 package -o "robotframework-lsp-${ROBOTFRAMEWORK_LSP_VERSION}.vsix"
+
+      - name: Upload Python distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: robotframework-lsp-python-dist
+          path: robotframework-ls/src/dist/*
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: robotframework-lsp-vsix
+          path: robotframework-ls/robotframework-lsp-${{ env.ROBOTFRAMEWORK_LSP_VERSION }}.vsix

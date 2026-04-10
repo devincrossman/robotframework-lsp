@@ -8,7 +8,7 @@ What to work on?
 ==================
 
 To start contributing usually the first step would be choosing what you'd like
-to work on, usually one of the issues from: https://github.com/robocorp/robotframework-lsp/issues.
+to work on, usually one of the issues from: https://github.com/devincrossman/robotframework-lsp/issues.
 If what you want to work on isn't there, feel free to create an issue for what
 you'd like to do and state in the issue that you'd like to provide a pull request
 (to avoid possible work duplication from 2 people working at the same thing).
@@ -19,7 +19,7 @@ bootstrap your development environment.
 Code/environment
 ==================
 
-Fork the repository at GitHub (https://github.com/robocorp/robotframework-lsp)
+Fork the repository at GitHub (https://github.com/devincrossman/robotframework-lsp)
 and then clone the sources of your fork with git to your local machine.
 
 After getting the code, the following steps are needed:
@@ -40,16 +40,18 @@ In Windows:
 ```
 python -m venv .venv
 .venv/Scripts/activate.bat
-python -m pip install -r robocorp-code/tests/test_requirements.txt
-python -m pip install -r robocorp-code/dev_requirements.txt
+python -m pip install -r robotframework-ls/tests/test_requirements.txt
+python -m pip install -r robocorp-python-ls-core/tests/test_requirements.txt
+python -m pip install -r robotframework-interactive/tests/test_requirements.txt
+python -m pip install fire
 python -m pip install robotframework
 python -m pip install robotremoteserver
 echo %cd%\robotframework-ls\src > .venv\Lib\site-packages\rf_src.pth
-echo %cd%\robocorp-code\src >> .venv\Lib\site-packages\rf_src.pth
 echo %cd%\robocorp-python-ls-core\src >> .venv\Lib\site-packages\rf_src.pth
+echo %cd%\robotframework-interactive\src >> .venv\Lib\site-packages\rf_src.pth
 echo %cd%\robotframework-ls\tests >> .venv\Lib\site-packages\rf_src.pth
-echo %cd%\robocorp-code\tests >> .venv\Lib\site-packages\rf_src.pth
 echo %cd%\robocorp-python-ls-core\tests >> .venv\Lib\site-packages\rf_src.pth
+echo %cd%\robotframework-interactive\tests >> .venv\Lib\site-packages\rf_src.pth
 ```
 
 In Linux:
@@ -57,19 +59,22 @@ In Linux:
 ```
 python3 -m venv .venv
 source ./.venv/bin/activate
-python3 -m pip install -r tests/test_requirements.txt
+python3 -m pip install -r robotframework-ls/tests/test_requirements.txt
+python3 -m pip install -r robocorp-python-ls-core/tests/test_requirements.txt
+python3 -m pip install -r robotframework-interactive/tests/test_requirements.txt
+python3 -m pip install fire
 python3 -m pip install robotframework
 python3 -m pip install robotremoteserver
 export PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 echo $PWD/robotframework-ls/src > .venv/lib/python${PY_VER}/site-packages/rf_src.pth
-echo $PWD/robocorp-code/src >> .venv/lib/python${PY_VER}/site-packages/rf_src.pth
 echo $PWD/robocorp-python-ls-core/src >> .venv/lib/python${PY_VER}/site-packages/rf_src.pth
+echo $PWD/robotframework-interactive/src >> .venv/lib/python${PY_VER}/site-packages/rf_src.pth
 echo $PWD/robotframework-ls/tests >> .venv/lib/python${PY_VER}/site-packages/rf_src.pth
-echo $PWD/robocorp-code/tests >> .venv/lib/python${PY_VER}/site-packages/rf_src.pth
 echo $PWD/robocorp-python-ls-core/tests >> .venv/lib/python${PY_VER}/site-packages/rf_src.pth
+echo $PWD/robotframework-interactive/tests >> .venv/lib/python${PY_VER}/site-packages/rf_src.pth
 ```
 
-Head to the root directory (where `package.json` is located) and run:
+Head to `robotframework-ls` (where `package.json` is located) and run:
 `yarn install`.
 
 

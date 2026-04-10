@@ -102,6 +102,10 @@ envs/
 .ropeproject
 
 # JavaScript
+.corepack-bin/
+.corepack-home/
+.npm-cache/
+.yarn-cache/
 
 # vim
 *.sw[mnopqrs]

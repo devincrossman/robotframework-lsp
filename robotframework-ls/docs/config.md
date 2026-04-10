@@ -70,10 +70,10 @@ Environment variables that affect the debugger:
 - `RFLS_KILL_ZOMBIE_PROCESSES`: Set to `true` to kill zombie processes automatically after running
     Robot Framework (default is false since `0.49.0`).
 
-- `RFLS_BREAK_ON_FAILURE`: Set to `true` to stop on failures when debugging in Intellij
+- `RFLS_BREAK_ON_FAILURE`: Set to `true` to stop on failures when using debugger integrations that honor this variable
     (In VSCode this is handled by the `Robot Log FAIL` in the breakpoints).
 
-- `RFLS_BREAK_ON_ERROR`: Set to `true` to stop on errors when debugging in Intellij
+- `RFLS_BREAK_ON_ERROR`: Set to `true` to stop on errors when using debugger integrations that honor this variable
     (In VSCode this is handled by the `Robot Log ERROR` in the breakpoints).
 
 - `RFLS_IGNORE_FAILURES_IN_KEYWORDS`: May be used to set the Keywords in which Robot Failures and Errors
