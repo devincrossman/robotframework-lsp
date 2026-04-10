@@ -807,6 +807,11 @@ def test_debugger_core_evaluate(
         )
         assert eval_info.future.result() == "BuiltIn.Should Be Equal"
 
+        eval_info = debugger_impl.evaluate(
+            frame_ids[0], "My Equal Redefined", context="hover"
+        )
+        assert eval_info.future.result().endswith("My Equal Redefined")
+
     finally:
         debugger_impl.step_continue()
 
