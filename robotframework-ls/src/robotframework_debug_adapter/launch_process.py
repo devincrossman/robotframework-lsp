@@ -136,6 +136,17 @@ def _compute_env_filtering(env: dict, target_args: List[str]):
     return env_filtering
 
 
+def _compute_python_launch_prefix(run_in_debug_mode: bool) -> List[str]:
+    import sys
+
+    cmdline = [sys.executable]
+    if run_in_debug_mode and sys.version_info >= (3, 11):
+        # pydevd warns that frozen modules may interfere with breakpoint
+        # validation on Python 3.11+, so disable them for debug launches.
+        cmdline.append("-Xfrozen_modules=off")
+    return cmdline
+
+
 def compute_cmd_line_and_env(
     run_robot_py: str,
     target: Union[str, List[str]],
@@ -251,8 +262,8 @@ def compute_cmd_line_and_env(
 
     # Note: target must be the last parameter.
     cmdline = (
-        [
-            sys.executable,
+        _compute_python_launch_prefix(run_in_debug_mode)
+        + [
             "-u",
             run_robot_py,
             "--port",
