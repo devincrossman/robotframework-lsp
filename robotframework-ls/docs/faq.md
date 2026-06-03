@@ -8,8 +8,6 @@ The most common reason this happens is because some error happened when trying t
 
 If you're in `VSCode`, the error may be seen in the `OUTPUT` tab, selecting `Robot Framework` in the dropdown.
 
-For `IntelliJ`, it's possible to see it by turning on the logging (see [Reporting Issues](reporting_issues.md) for details -- look for `EXCEPTION` in the log files).
-
 **Important**: After the logs are collected, revert the changes to stop the logging (having the logging on may make the language server go slower).
 
 The common errors here are:
@@ -148,7 +146,7 @@ If you have a case where you believe the language server should detect
 properly and it's not detecting (and you're having to work around it by disabling
 linting or specifying a variable to be ignored), please create an issue in:
 
-https://github.com/robocorp/robotframework-lsp/issues
+https://github.com/devincrossman/robotframework-lsp/issues
 
 So that it can be fixed in the future ;)
 
@@ -204,7 +202,7 @@ How to enable the Robocop linter?
 
 To enable the `Robocop` linter, change the setting:
 `robot.lint.robocop.enabled`
-to `true` (in the IntelliJ UI, it's the `Lint Robocop Enabled` setting).
+to `true`.
 
 How to change the Robocop version used?
 ---------------------------------------
@@ -212,15 +210,6 @@ How to change the Robocop version used?
 The language server will initially try to load the version available from the `robot.python.executable` that's being used (which defaults to the same version used to start up the language server itself), so, if you want to use a different `Robocop` version, just install it so that it's importable in the proper Python environment (note: the minimun `Robocop` version is `1.6.1`).
 
 **Note** that a default version is also shipped (but it may not be the latest `Robocop` version).
-
-How to install a build from GitHub on IntelliJ?
------------------------------------------------
-
-First download the `IntelliJ-distribution.zip` from one of the [Tests IntelliJ](https://github.com/robocorp/robotframework-lsp/actions?query=workflow%3A%22Tests+-+IntelliJ%22) jobs in [https://github.com/robocorp/robotframework-lsp/actions](https://github.com/robocorp/robotframework-lsp/actions), then extract the `robotframework-IntelliJ-X.XX.X.zip` from it (due to a limitation in the GitHub upload artifacts action, even a single .zip is zipped again).
-
-Afterwards, proceed to `File` > `Settings` > `Plugins`, click the ⚙️ 'gear' icon, choose `Install Plugin from Disk...`, point to the `robotframework-IntelliJ-X.XX.X.zip` file and then restart IntelliJ.
-
-**Note** (common on macOS): if you unzipped and instead of the `robotframework-IntelliJ-X.XX.X.zip` you get directories, your .zip program is automatically unzipping the .zip inside the `distribution-IntelliJ.zip`. In this case you can either use a different program to unzip or re-zip those extracted contents into a new .zip.
 
 How to change the file-watch mode?
 ----------------------------------
@@ -386,13 +375,15 @@ If you'd like to disable this support it's possible to put:
 In your `settings.json`.
 
 
-How to install a pre-release
-------------------------------------
+How to install this extension package manually
+----------------------------------------------
 
-To install a pre-release, select the extension you want 
-in the extensions view and click `Switch to Pre-Release version`.
+This fork does not publish VS Code pre-releases from GitHub Actions.
 
-See image below:
+To test a built package locally:
 
-![Install pre-release](./images/install_pre_release.png)
+- build or download the `.vsix`
+- in VS Code, open the Extensions view
+- use `...` > `Install from VSIX...`
+- select the generated `robotframework-lsp.vsix`
 

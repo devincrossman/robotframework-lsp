@@ -10,8 +10,8 @@ def spec_v1(app):
             languages=["robotframework"],
             mime_types=["text/x-robotframework"],
             urls=dict(
-                home="https://github.com/robocorp/robotframework-lsp",
-                issues="https://github.com/robocorp/robotframework-lsp/issues",
+                home="https://github.com/devincrossman/robotframework-lsp",
+                issues="https://github.com/devincrossman/robotframework-lsp/issues",
             ),
             install=dict(
                 pip="pip install robotframework-lsp",

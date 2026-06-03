@@ -96,6 +96,24 @@ def get_builtin_normalized_names() -> FrozenSet[str]:
     return frozenset(normalized)
 
 
+def _get_runner_keyword_name(runner: Any) -> str:
+    for obj in (runner, getattr(runner, "keyword", None)):
+        if obj is None:
+            continue
+        for attr in ("longname", "full_name"):
+            value = getattr(obj, attr, None)
+            if value:
+                return value
+
+    keyword = getattr(runner, "keyword", None)
+    owner = getattr(keyword, "owner", None)
+    owner_name = getattr(owner, "name", None)
+    name = getattr(keyword, "name", None) or getattr(runner, "name", None)
+    if owner_name and name:
+        return f"{owner_name}.{name}"
+    return name or ""
+
+
 log = get_logger(__name__)
 
 next_id: INextId = partial(next, itertools.count(1))
@@ -579,7 +597,9 @@ class _EvaluationInfo(object):
             try:
                 ctx = info.execution_context
                 return EvaluationResult(
-                    ctx.namespace.get_runner(self.expression).longname
+                    _get_runner_keyword_name(
+                        ctx.namespace.get_runner(self.expression)
+                    )
                 )
             except:
                 log.exception("Error on hover evaluation: %s", self.expression)

@@ -15,6 +15,7 @@ import os
 import traceback
 
 __file__ = os.path.abspath(__file__)
+REPOSITORY_URL = "https://github.com/devincrossman/robotframework-lsp"
 
 if not os.path.exists(os.path.join(os.path.abspath("."), "dev.py")):
     raise RuntimeError('Please execute commands from the directory containing "dev.py"')
@@ -303,8 +304,7 @@ class Dev(object):
 
         new_content = re.sub(
             r"\(docs/",
-            r"(https://github.com/robocorp/robotframework-lsp/tree/%s/robotframework-ls/docs/"
-            % (tag,),
+            f"({REPOSITORY_URL}/tree/{tag}/robotframework-ls/docs/",
             content,
         )
         with open(readme, "w") as f:
@@ -320,7 +320,7 @@ def test_lines():
         version="0.0.1"
         "version": "0.0.1",
         __version__ = "0.0.1"
-        https://github.com/robocorp/robotframework-lsp/blob/robotframework-lsp-0.1.1/robotframework-ls/README.md
+        https://github.com/devincrossman/robotframework-lsp/blob/robotframework-lsp-0.1.1/robotframework-ls/README.md
     """
     from robocorp_ls_core.unittest_tools.compare import compare_lines
 
@@ -332,7 +332,7 @@ def test_lines():
         "version":"0.0.1",
         "version" :"0.0.1",
         __version__ = "0.0.1"
-        https://github.com/robocorp/robotframework-lsp/blob/robotframework-lsp-0.1.1/robotframework-ls/README.md
+        https://github.com/devincrossman/robotframework-lsp/blob/robotframework-lsp-0.1.1/robotframework-ls/README.md
         """,
         "3.7.1",
     )
@@ -344,7 +344,7 @@ def test_lines():
         "version":"3.7.1",
         "version" :"3.7.1",
         __version__ = "3.7.1"
-        https://github.com/robocorp/robotframework-lsp/blob/robotframework-lsp-3.7.1/robotframework-ls/README.md
+        https://github.com/devincrossman/robotframework-lsp/blob/robotframework-lsp-3.7.1/robotframework-ls/README.md
         """
 
     compare_lines(contents.splitlines(), expected.splitlines())
